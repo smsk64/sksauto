@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root{--ink:#1d2330;--mut:#667085;--line:#e4e7ec;--acc:#3b5bfd;--accd:#2f49d1}
+  *{box-sizing:border-box}
+  body{margin:0;font:13px/1.35 "Segoe UI",system-ui,sans-serif;color:var(--ink);background:#fff;display:flex;flex-direction:column;height:100vh}
+  main{flex:1;overflow:auto;padding:22px 26px 8px}
+  h1{font-size:18px;margin:0 0 18px}
+  h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin:20px 0 10px;font-weight:600}
+  h2:first-of-type{margin-top:0}
+  label.f{display:block;margin-bottom:12px}
+  label.f > span{display:block;margin-bottom:5px;font-weight:600;font-size:12px}
+  input[type=text],input[type=password]{width:100%;height:36px;border:1px solid #d0d5dd;border-radius:8px;padding:0 12px;font:inherit;color:var(--ink);outline:none;background:#fff}
+  input[type=text]:focus,input[type=password]:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(59,91,253,.15)}
+  .pw{position:relative}
+  .pw input{padding-right:44px}
+  .goz{position:absolute;right:4px;top:4px;width:36px;height:28px;border:0;background:transparent;border-radius:6px;cursor:pointer;color:var(--mut);font-size:12px}
+  .goz:hover{background:#eef0f4}
+  .ipucu{color:var(--mut);font-size:12px;margin-top:5px}
+  .uyari{color:#b42318;font-size:12px;margin-top:5px}
+  .tik{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer}
+  .tik:hover{background:#f8f9fb}
+  .tik input{margin-top:2px;width:16px;height:16px;accent-color:var(--acc);flex:none}
+  .tik b{display:block;font-weight:600}
+  .tik small{color:var(--mut)}
+  .link{border:0;background:none;color:#b42318;cursor:pointer;font:inherit;font-size:12px;padding:0;margin-top:6px}
+  .link:hover{text-decoration:underline}
+  footer{display:flex;align-items:center;gap:10px;padding:14px 26px;border-top:1px solid var(--line);background:#fafbfc}
+  #d{flex:1;font-size:12px;color:var(--mut);min-width:0}
+  #d.ok{color:#067647}
+  #d.hata{color:#b42318}
+  button.b{height:36px;padding:0 16px;border-radius:8px;border:1px solid #d0d5dd;background:#fff;font:inherit;cursor:pointer;color:var(--ink)}
+  button.b:hover{background:#eef0f4}
+  button.p{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+  button.p:hover{background:var(--accd)}
+  .yol{margin-top:18px;font-size:11px;color:var(--mut);word-break:break-all}
+</style>
+</head>
+<body>
+<main>
+  <h1>Ayarlar</h1>
+
+  <h2>Giriş bilgileri</h2>
+  <label class="f"><span>Kullanıcı adı</span>
+    <input id="us" type="text" autocomplete="off" spellcheck="false"></label>
+  <label class="f"><span>Parola</span>
+    <div class="pw">
+      <input id="pw" type="password" autocomplete="new-password">
+      <button class="goz" id="goz" type="button" title="Göster / gizle">göster</button>
+    </div>
+    <div class="ipucu" id="pwip">Tüm sekmelerde geçerlidir. Boş bırakırsan kayıtlı parola değişmez.</div>
+    <div class="uyari" id="pwbozuk" style="display:none">Kayıtlı parola çözülemedi. Lütfen parolayı yeniden yazıp kaydet.</div>
+    <button class="link" id="pwsil" type="button" style="display:none">Kayıtlı parolayı sil</button>
+  </label>
+  <label class="tik"><input id="oto" type="checkbox">
+    <span><b>Otomatik giriş</b><small>Sayfa açılınca giriş formu otomatik doldurulur.</small></span></label>
+
+  <h2>Varsayılan adres</h2>
+  <label class="f"><span>İnternet sayfası</span>
+    <input id="url" type="text" placeholder="https://..." spellcheck="false">
+    <div class="ipucu">Boş bırakırsan hiçbir sayfa kendiliğinden açılmaz.</div></label>
+  <label class="tik"><input id="bas" type="checkbox">
+    <span><b>Başlangıçta aç</b><small>Uygulama açılınca tüm sekmeler bu adresle başlar.</small></span></label>
+  <label class="tik"><input id="yeni" type="checkbox">
+    <span><b>Yeni sekmede aç</b><small>+ ile eklenen sekme bu adresi açar.</small></span></label>
+
+  <div class="yol" id="yol"></div>
+</main>
+<footer>
+  <span id="d"></span>
+  <button class="b" id="kapat" type="button">Kapat</button>
+  <button class="b p" id="kaydet" type="button">Kaydet</button>
+</footer>
+<script>
+const $ = (id) => document.getElementById(id);
+let hasPass = false;
+
+function durum(m, t) { $('d').textContent = m || ''; $('d').className = t || ''; }
+
+async function yukle() {
+  const r = await api.al('ayar:oku');
+  $('us').value = r.user || '';
+  $('oto').checked = r.auto;
+  $('url').value = r.url || '';
+  $('bas').checked = r.baslangic;
+  $('yeni').checked = r.yeniSekme;
+  hasPass = r.hasPass;
+  $('pw').placeholder = r.hasPass ? '●●●●●●●● kayıtlı' : 'parola';
+  $('pwsil').style.display = r.hasPass ? 'inline' : 'none';
+  $('pwbozuk').style.display = r.parolaBozuk ? 'block' : 'none';
+  $('yol').textContent = 'Bilgiler bu klasörde saklanır: ' + r.veri;
+}
+
+function topla(ekstra) {
+  return Object.assign({
+    user: $('us').value, pass: $('pw').value, auto: $('oto').checked,
+    url: $('url').value, baslangic: $('bas').checked, yeniSekme: $('yeni').checked
+  }, ekstra || {});
+}
+
+async function kaydet(ekstra, kapat) {
+  $('kaydet').disabled = true;
+  const r = await api.al('ayar:kaydet', topla(ekstra));
+  $('kaydet').disabled = false;
+  if (r.ok) {
+    $('pw').value = '';
+    await yukle();
+    durum('Kaydedildi ✓', 'ok');
+    if (kapat) window.close();
+  } else {
+    durum('Kaydedilemedi: ' + (r.hata || 'bilinmeyen hata'), 'hata');
+  }
+}
+
+$('kaydet').onclick = () => kaydet();
+$('kapat').onclick = () => window.close();
+$('pwsil').onclick = () => { if (confirm('Kayıtlı parola silinsin mi?')) kaydet({ parolaSil: true, pass: '' }); };
+$('goz').onclick = () => {
+  const g = $('pw').type === 'password';
+  $('pw').type = g ? 'text' : 'password';
+  $('goz').textContent = g ? 'gizle' : 'göster';
+};
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') $('kaydet').click();
+  if (e.key === 'Escape') window.close();
+});
+yukle();
+</script>
+</body>
+</html>
