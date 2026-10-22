@@ -23,8 +23,8 @@ const CFG = path.join(BASE, 'veri', 'ayar.json');
 const SCRIPT = path.join(BASE, 'veri', 'script.user.js');
 const DEBUG_FILE = path.join(BASE, 'veri', 'debug.log');
 const TAB_PRELOAD = path.join(__dirname, 'preload-tab.js');
-const TOOLBAR_H = 116;
-let win, editWin, dbgWin, cfg;
+const TOOLBAR_H = 84;
+let win, editWin, dbgWin, setWin, cfg;
 const views = {};
 
 // ---------------- Debug kayıt sistemi ----------------
@@ -159,27 +159,59 @@ function coz(s) {
   return '';
 }
 
+const VARSAYILAN_CFG = () => ({
+  nextId: 5, active: 1,
+  tabs: [1, 2, 3, 4].map((n) => ({ id: n, name: String(n), url: '', zoom: 1 })),
+  giris: { user: '', pass: '', auto: false },
+  ayar: { url: '', baslangic: false, yeniSekme: false }
+});
+function cfgOku(f) { return JSON.parse(fs.readFileSync(f, 'utf8')); }
 function cfgYukle() {
-  try { return JSON.parse(fs.readFileSync(CFG, 'utf8')); } catch (e) {}
-  return {
-    nextId: 5, active: 1,
-    tabs: [1, 2, 3, 4].map((n) => ({ id: n, name: String(n), url: '', zoom: 1 }))
-  };
+  let c = null;
+  if (fs.existsSync(CFG)) {
+    try { c = cfgOku(CFG); } catch (e) {
+      try { c = cfgOku(CFG + '.bak'); dlog(null, 'UYARI', 'ayar.json okunamadı, yedekten yüklendi'); } catch (e2) {}
+    }
+  }
+  if (!c || !Array.isArray(c.tabs)) c = VARSAYILAN_CFG();
+  // Eski sürümden geçiş: sekme bazlı kullanıcı/parola -> tek ortak giriş bilgisi
+  if (!c.giris) {
+    const t = c.tabs.find((x) => x.user && x.pass) || c.tabs.find((x) => x.user);
+    c.giris = { user: t ? t.user : '', pass: t ? (t.pass || '') : '', auto: c.tabs.some((x) => x.auto) };
+  }
+  c.tabs.forEach((t) => { delete t.user; delete t.pass; delete t.auto; });
+  c.giris = Object.assign({ user: '', pass: '', auto: false }, c.giris);
+  c.ayar = Object.assign({ url: '', baslangic: false, yeniSekme: false }, c.ayar || {});
+  if (!c.nextId) c.nextId = Math.max(0, ...c.tabs.map((t) => t.id)) + 1;
+  return c;
 }
+let sonKayitHata = '';
 function cfgKaydet() {
+  const veri = JSON.stringify(cfg, null, 2);
   try {
     fs.mkdirSync(path.dirname(CFG), { recursive: true });
-    fs.writeFileSync(CFG, JSON.stringify(cfg, null, 2));
-  } catch (e) {}
+    const tmp = CFG + '.tmp';
+    try {
+      fs.writeFileSync(tmp, veri);
+      fs.renameSync(tmp, CFG);
+    } catch (e) {
+      fs.writeFileSync(CFG, veri);
+    }
+    sonKayitHata = '';
+    return true;
+  } catch (e) {
+    sonKayitHata = String(e && e.message);
+    dlog(null, 'HATA', 'ayar kaydedilemedi: ' + sonKayitHata);
+    return false;
+  }
 }
 function push() {
   if (!win || win.isDestroyed()) return;
   win.webContents.send('durum', {
     active: cfg.active,
-    tabs: cfg.tabs.map((t) => ({
-      id: t.id, name: t.name, url: t.url, zoom: t.zoom || 1,
-      user: t.user || '', auto: !!t.auto, hasPass: !!t.pass
-    }))
+    tabs: cfg.tabs.map((t) => ({ id: t.id, name: t.name, url: t.url, zoom: t.zoom || 1 })),
+    giris: { user: cfg.giris.user, hasPass: !!cfg.giris.pass, auto: !!cfg.giris.auto },
+    ayar: cfg.ayar
   });
 }
 
@@ -360,12 +392,12 @@ function teshisFn() {
 }
 
 function loginDene(id, zorla) {
-  const t = tabBul(id), v = views[id];
-  if (!t || !v || !t.user || !t.pass) return null;
-  if (!zorla && !t.auto) return null;
-  const p = coz(t.pass);
+  const g = cfg.giris, v = views[id];
+  if (!g || !v || !g.user || !g.pass) return null;
+  if (!zorla && !g.auto) return null;
+  const p = coz(g.pass);
   if (!p) return null;
-  const kod = '(' + girisFn.toString() + ')(' + JSON.stringify(t.user) + ',' + JSON.stringify(p) + ',' + (zorla ? 'true' : 'false') + ')';
+  const kod = '(' + girisFn.toString() + ')(' + JSON.stringify(g.user) + ',' + JSON.stringify(p) + ',' + (zorla ? 'true' : 'false') + ')';
   return v.webContents.executeJavaScript(kod);
 }
 
@@ -484,6 +516,17 @@ function editorAc() {
   editWin.removeMenu();
   editWin.loadFile(path.join(__dirname, 'editor.html'));
 }
+function ayarAc() {
+  if (setWin && !setWin.isDestroyed()) { setWin.focus(); return; }
+  setWin = new BrowserWindow({
+    width: 520, height: 660, parent: win, modal: true, title: 'Ayarlar',
+    autoHideMenuBar: true, resizable: false, minimizable: false, maximizable: false,
+    backgroundColor: '#ffffff',
+    webPreferences: { preload: path.join(__dirname, 'preload.js') }
+  });
+  setWin.removeMenu();
+  setWin.loadFile(path.join(__dirname, 'ayarlar.html'));
+}
 function debugAc() {
   if (dbgWin && !dbgWin.isDestroyed()) { dbgWin.focus(); return; }
   dbgWin = new BrowserWindow({
@@ -496,6 +539,7 @@ function debugAc() {
 
 function pencereAc() {
   cfg = cfgYukle();
+  if (cfg.ayar.baslangic && cfg.ayar.url) cfg.tabs.forEach((t) => { t.url = cfg.ayar.url; });
   win = new BrowserWindow({
     width: 1280, height: 800, autoHideMenuBar: true, title: 'Stok Oto',
     webPreferences: { preload: path.join(__dirname, 'preload.js') }
@@ -515,7 +559,7 @@ ipcMain.on('sec', (e, id) => {
 });
 ipcMain.on('ekle', () => {
   const id = cfg.nextId++;
-  const tab = { id, name: String(cfg.tabs.length + 1), url: '', zoom: 1 };
+  const tab = { id, name: String(cfg.tabs.length + 1), url: (cfg.ayar.yeniSekme && cfg.ayar.url) || '', zoom: 1 };
   cfg.tabs.push(tab);
   viewOlustur(tab);
   cfg.active = id; cfgKaydet(); layout(); push();
@@ -555,21 +599,12 @@ ipcMain.on('zoomhepsi', (e, id) => {
   if (t) cfg.tabs.forEach((x) => zoomAyar(x.id, t.zoom || 1));
 });
 
-ipcMain.on('giris', (e, id, user, pass, auto, hepsi) => {
-  const t = tabBul(id);
-  if (!t) return;
-  const enc = pass ? sifrele(pass) : t.pass;
-  const hedef = hepsi ? cfg.tabs : [t];
-  hedef.forEach((x) => { x.user = user; x.pass = enc; x.auto = !!auto; });
-  cfgKaydet(); push();
-});
-
 // Şimdi gir: sonucu geri bildirir
 async function simdiYap(id) {
-  const t = tabBul(id), v = views[id];
+  const t = tabBul(id), v = views[id], g = cfg.giris;
   if (!t || !v) return 'sekme yok';
-  if (!t.user || !t.pass) return 'kullanıcı/parola kayıtlı değil (önce Kaydet)';
-  if (!coz(t.pass)) return 'parola çözülemedi, parolayı yeniden kaydet';
+  if (!g.user || !g.pass) return 'Kullanıcı adı/parola kayıtlı değil (Ayarlar\'dan kaydet)';
+  if (!coz(g.pass)) return 'Parola çözülemedi, Ayarlar\'dan yeniden kaydet';
   try { await loginDene(id, true); } catch (err) { return 'kod hatası: ' + err.message; }
   await new Promise((r) => setTimeout(r, 11000));
   try {
@@ -586,13 +621,48 @@ ipcMain.handle('simdi', async (e, id) => {
 
 // Teşhis: sayfadaki alan/buton listesini panoya kopyalar (parola/değer içermez)
 ipcMain.handle('teshis', async (e, id) => {
+  id = id || cfg.active;
   const v = views[id];
   if (!v) return 'sekme yok';
   try {
     const r = await v.webContents.executeJavaScript('(' + teshisFn.toString() + ')()');
     clipboard.writeText(r);
+    dlog(id, 'TEŞHİS', 'giriş formu teşhisi alındı');
     return r.split('\n').length + ' satır panoya kopyalandı, sohbete yapıştır';
   } catch (err) { return 'hata: ' + err.message; }
+});
+
+// Ayarlar penceresi
+ipcMain.on('ayarlar', ayarAc);
+ipcMain.handle('ayar:oku', () => ({
+  user: cfg.giris.user,
+  hasPass: !!cfg.giris.pass,
+  parolaBozuk: !!cfg.giris.pass && !coz(cfg.giris.pass),
+  auto: !!cfg.giris.auto,
+  url: cfg.ayar.url,
+  baslangic: !!cfg.ayar.baslangic,
+  yeniSekme: !!cfg.ayar.yeniSekme,
+  veri: path.dirname(CFG)
+}));
+ipcMain.handle('ayar:kaydet', (e, o) => {
+  o = o || {};
+  cfg.giris.user = String(o.user || '').trim();
+  if (o.parolaSil) cfg.giris.pass = '';
+  else if (o.pass) cfg.giris.pass = sifrele(String(o.pass));
+  cfg.giris.auto = !!o.auto;
+  cfg.ayar.url = normURL(o.url);
+  cfg.ayar.baslangic = !!o.baslangic;
+  cfg.ayar.yeniSekme = !!o.yeniSekme;
+  try { if (fs.existsSync(CFG)) fs.copyFileSync(CFG, CFG + '.bak'); } catch (err) {}
+  const ok = cfgKaydet();
+  let dogru = false;
+  try {
+    const c = cfgOku(CFG);
+    dogru = c.giris.user === cfg.giris.user && c.giris.pass === cfg.giris.pass && c.ayar.url === cfg.ayar.url;
+  } catch (err) {}
+  push();
+  dlog(null, 'AYAR', 'ayarlar kaydedildi (kullanıcı ' + (cfg.giris.user ? 'var' : 'yok') + ', parola ' + (cfg.giris.pass ? 'var' : 'yok') + ', adres ' + (cfg.ayar.url ? 'var' : 'yok') + ')');
+  return { ok: ok && dogru, hata: sonKayitHata || (dogru ? '' : 'dosya doğrulanamadı'), hasPass: !!cfg.giris.pass, url: cfg.ayar.url };
 });
 
 // Debug penceresi
