@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Stok Koordinasyon Otomasyonu v4.5
+// @name         Stok Koordinasyon Otomasyonu v4.6
 // @namespace    stok-oto
-// @version      4.5
-// @description  Akıllı teklif: miad + miktar + hastane + yurtdışı bütçe kontrolü, otomatik sayfa geçişi (hata olursa tekrar dener), log paneli
+// @version      4.6
+// @description  Akıllı teklif: miad + miktar + hastane + yurtdışı bütçe kontrolü, sunucu yavaşlığına dayanıklı sayfa geçişi, hata olunca durmadan toparlanma, log paneli
 // @match        *://*/*
 // @grant        none
 // @run-at       document-idle
@@ -13,11 +13,16 @@
 
     // ============ SABİTLER ============
     const ADIM_BEKLEME = 800;
-    const POPUP_BEKLEME = 8000;
+    const POPUP_BEKLEME = 10000;        // popup'ın açılması için bekleme (her denemede)
+    const POPUP_DENEME = 3;             // popup açılmazsa aynı satır için deneme sayısı
     const KAYDET_SONRASI = 3500;
-    const TEKRAR_BEKLEME = 15000; // sayfa geçişi başarısız olursa tekrar denemeden önce bekleme
-    const LOG_MAX = 5000;      // saklanacak en fazla kayıt
-    const LOG_GOSTER = 30;     // panelde görünen kayıt sayısı
+    const TEKRAR_BEKLEME = 15000;       // sayfa geçişi başarısız olursa tekrar denemeden önce bekleme
+    const SUNUCU_BOS_MAX = 600000;      // sunucudaki isteğin bitmesi için en fazla bekleme (10 dk)
+    const ARDISIK_HATA_LIMIT = 4;       // üst üste bu kadar satır hatasında sayfa yenileyip toparlan
+    const KURTARMA_MAX = 5;             // ilerleme olmadan en fazla kaç kez sayfa yenilensin
+    const KURTAR_BEKLEME = 60000;       // yenilemeden önce sunucuya nefes aldırma
+    const LOG_MAX = 5000;               // saklanacak en fazla kayıt
+    const LOG_GOSTER = 30;              // panelde görünen kayıt sayısı
     // ==================================
 
     const SEL_SATIR  = 'tr[id*="ASPxGridViewStokFazlasi_DXDataRow"]';
@@ -28,17 +33,67 @@
     const SEL_PAGER  = 'div[id$="ASPxGridViewStokFazlasi_DXPagerBottom"]';
 
     if (window.top !== window.self) return;
-    if (!document.querySelector('[id*="ASPxGridViewStokFazlasi"]')) return;
 
-    // ---------- Ayarlar (tarayıcıda hatırlanır) ----------
     const AYAR_KEY = 'oto_ayar_v4';
     const DURUM_KEY = 'oto_durum_v42';
     const LOG_KEY = 'oto_log_v43';
-    let A = { yuzde: 50, min: 10, max: 50, adim: 5, gun: 180, maxTeklif: 3, maxSayfa: 1, gecisSn: 60, deneme: 3, hastaneTek: true };
+
+    // Grid yoksa: çalışma sırasında sayfa yenilenmiş ve sunucu henüz cevap vermiyor olabilir.
+    // Çalışma bayrağı açıksa ve hâlâ sorgulama sayfasındaysak 60 sn sonra tekrar yenile.
+    if (!document.querySelector('[id*="ASPxGridViewStokFazlasi"]')) {
+        try {
+            const s = JSON.parse(sessionStorage.getItem(DURUM_KEY) || 'null');
+            const n = +sessionStorage.getItem('__otoYenileSay') || 0;
+            if (s && s.run && /TalepciSorgulama/i.test(location.href) && n < 20) {
+                sessionStorage.setItem('__otoYenileSay', String(n + 1));
+                console.log('[Oto] grid bulunamadı, 60 sn sonra sayfa tekrar yenilenecek (' + (n + 1) + '/20)');
+                setTimeout(() => location.reload(), 60000);
+            }
+        } catch (e) {}
+        return;
+    }
+    try { sessionStorage.removeItem('__otoYenileSay'); } catch (e) {}
+
+    // ---------- Sunucu isteği sayacı (TalepciSorgulama XHR'ları) ----------
+    if (!window.__otoXhrKurulu) {
+        window.__otoXhrKurulu = true;
+        window.__otoXhrBekleyen = 0;
+        const xo = XMLHttpRequest.prototype.open;
+        const xs = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function (m, u) {
+            try { this.__otoU = String(u || ''); } catch (e) {}
+            return xo.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function () {
+            if (/TalepciSorgulama/i.test(this.__otoU || '')) {
+                window.__otoXhrBekleyen = (window.__otoXhrBekleyen || 0) + 1;
+                let b = false;
+                const d = () => {
+                    if (b) return;
+                    b = true;
+                    window.__otoXhrBekleyen = Math.max(0, (window.__otoXhrBekleyen || 0) - 1);
+                };
+                this.addEventListener('loadend', d);
+            }
+            return xs.apply(this, arguments);
+        };
+    }
+    const xhrBekleyen = () => window.__otoXhrBekleyen || 0;
+
+    // ---------- Ayarlar (tarayıcıda hatırlanır) ----------
+    let A = { yuzde: 50, min: 10, max: 50, adim: 5, gun: 180, maxTeklif: 3, maxSayfa: 1, gecisSn: 600, deneme: 5, hastaneTek: true, v46: true };
     try { Object.assign(A, JSON.parse(localStorage.getItem(AYAR_KEY) || '{}')); } catch (e) {}
+    // v4.6'ya geçişte eski kısa bekleme/deneme değerlerini yükselt (bir kereliğine)
+    if (!A.v46) {
+        A.gecisSn = 600;
+        A.deneme = Math.max(5, A.deneme || 5);
+        A.v46 = true;
+        try { localStorage.setItem(AYAR_KEY, JSON.stringify(A)); } catch (e) {}
+    }
 
     // ---------- Durum (sayfa yenilense de kaybolmaz) ----------
-    let D = { run: false, sayfa: null, done: [], hastaneler: [], teklif: 0, atlanan: 0, sayfaSayac: 0, nedenler: {} };
+    const D0 = () => ({ run: false, sayfa: null, done: [], hastaneler: [], teklif: 0, atlanan: 0, sayfaSayac: 0, nedenler: {}, hedef: null, ardisikHata: 0, kurtarma: 0 });
+    let D = D0();
     try {
         const s = JSON.parse(sessionStorage.getItem(DURUM_KEY) || 'null');
         if (s) D = Object.assign(D, s);
@@ -82,7 +137,7 @@
                 d.textContent = s;
                 d.style.cssText = 'padding:2px 0;border-bottom:1px solid #eee;word-break:break-word;';
                 if (s.includes('| TEKLİF |')) d.style.color = '#0a7a2f';
-                else if (s.includes('| HATA |')) d.style.color = '#c00';
+                else if (s.includes('| HATA |') || s.includes('| KURTAR |')) d.style.color = '#c00';
                 else if (s.includes('| ATLA |')) d.style.color = '#888';
                 else d.style.color = '#222';
                 logKutu.appendChild(d);
@@ -172,6 +227,56 @@
         return [...document.querySelectorAll(SEL_KAPAT)].filter(gorunur)[0] || null;
     }
 
+    // ---------- Sunucu durumu ----------
+    function gridNesne() {
+        try {
+            const r = document.querySelector(SEL_SATIR);
+            if (!r) return null;
+            const ad = r.id.split('_DXDataRow')[0];
+            const col = window.ASPxClientControl.GetControlCollection();
+            const g = col.GetByName ? col.GetByName(ad) : col.Get(ad);
+            return g && typeof g.GotoPage === 'function' ? g : null;
+        } catch (e) { return null; }
+    }
+    function sunucuMesgul() {
+        if (xhrBekleyen() > 0) return true;
+        try {
+            const g = gridNesne();
+            if (g && typeof g.InCallback === 'function' && g.InCallback()) return true;
+        } catch (e) {}
+        return false;
+    }
+    // Sunucudaki istek bitene kadar bekler (tekrar tıklamadan). true: boşta, false: zaman aşımı / durduruldu
+    async function bosBekle(maxMs, etiket) {
+        const bas = Date.now();
+        let yazildi = false;
+        while (Date.now() - bas < maxMs) {
+            if (durduruldu) return false;
+            if (!sunucuMesgul()) {
+                await bekle(300);
+                if (!sunucuMesgul()) return true;
+                continue;
+            }
+            const sn = Math.round((Date.now() - bas) / 1000);
+            if (!yazildi && sn >= 10) { logYaz('BEKLE', `sunucu cevabı bekleniyor (${etiket})`); yazildi = true; }
+            durumYaz(`Sunucu cevabı bekleniyor... ${sn} sn (${etiket})`);
+            await bekle(300);
+        }
+        logYaz('HATA', `sunucu ${Math.round(maxMs / 1000)} sn içinde cevap vermedi (${etiket})`);
+        return false;
+    }
+    // Açık kalmış popup varsa kapat
+    async function popupTemizle() {
+        for (let i = 0; i < 3; i++) {
+            if (durduruldu) return;
+            const x = disKapatBul();
+            if (!x && !gorunurAra(SEL_MIKTAR)) return;
+            if (x) x.click();
+            await bekleVeBul(() => !gorunurAra(SEL_MIKTAR), 4000);
+            await bekle(500);
+        }
+    }
+
     // ---------- Tablo okuma ----------
     function kolonlar() {
         const idx = {};
@@ -223,9 +328,10 @@
         return m;
     }
 
-    // ---------- Tek satır ----------
+    // ---------- Tek satır: 'teklif' | 'atla' | 'hata' | 'dur' ----------
     async function satirIsle(satir, k) {
-        D.done.push(satir.id);
+        const satirId = satir.id;
+        D.done.push(satirId);
         durumKaydet();
 
         const hucre = satir.children;
@@ -235,7 +341,7 @@
         const stok = sayiOku(hucre[k.stok] && hucre[k.stok].textContent);
         const miad = tarihOku(miadYazi);
         const hastane = hastaneOku(hucre[k.hastane]);
-        const btn = satir.querySelector(SEL_ISTEK);
+        const btn0 = satir.querySelector(SEL_ISTEK);
         const bilgi = `${ilac} | ${butce} | stok ${stok} | miad ${miadYazi} | ${hastane}`;
 
         const atla = (neden) => {
@@ -246,7 +352,7 @@
             return 'atla';
         };
 
-        if (!btn || btn.disabled) return atla('buton yok');
+        if (!btn0 || btn0.disabled) return atla('buton yok');
         if (yurtdisiMi(butce)) return atla('yurtdışı bütçe');
         if (stok === null || !miad) return atla('veri okunamadı');
 
@@ -260,30 +366,70 @@
         if (miktar < A.min) return atla(`miktar düşük (hesap: ${miktar})`);
 
         durumYaz(`Teklif: ${miktar} (stok ${stok}) açılıyor...`);
-        satir.scrollIntoView({ block: 'center' });
-        await bekle(400);
-        btn.click();
 
-        const kutu = await bekleVeBul(() => gorunurAra(SEL_MIKTAR), POPUP_BEKLEME);
-        if (!kutu) { logYaz('HATA', `popup açılmadı | ${bilgi}`); durumYaz('Popup açılmadı. Durdu.'); return 'hata'; }
+        // Sunucu bir önceki isteği işlerken popup açmaya çalışma
+        if (!(await bosBekle(SUNUCU_BOS_MAX, 'satır öncesi'))) return durduruldu ? 'dur' : 'hata';
+
+        // Popup'ı aç (açılmazsa temizleyip tekrar dene)
+        let kutu = null;
+        for (let d = 1; d <= POPUP_DENEME && !kutu; d++) {
+            if (durduruldu) return 'dur';
+            if (d > 1) {
+                logYaz('HATA', `popup açılmadı, tekrar deneniyor (${d}/${POPUP_DENEME}) | ${bilgi}`);
+                await popupTemizle();
+                await bekle(3000 * d);
+                if (!(await bosBekle(SUNUCU_BOS_MAX, 'popup tekrar'))) return durduruldu ? 'dur' : 'hata';
+            }
+            const p = sayfaBilgi();
+            if (p.cur && D.sayfa && p.cur !== D.sayfa) {
+                logYaz('HATA', `satır işlenirken sayfa değişti (${D.sayfa} -> ${p.cur}) | ${bilgi}`);
+                return 'hata';
+            }
+            const s2 = document.getElementById(satirId) || satir;
+            const btn = s2.querySelector(SEL_ISTEK);
+            if (!btn || btn.disabled) { logYaz('HATA', `istek butonu bulunamadı | ${bilgi}`); return 'hata'; }
+            s2.scrollIntoView({ block: 'center' });
+            await bekle(400);
+            btn.click();
+            kutu = await bekleVeBul(() => gorunurAra(SEL_MIKTAR), POPUP_BEKLEME);
+        }
+        if (!kutu) {
+            logYaz('HATA', `popup açılmadı (${POPUP_DENEME} deneme) | ${bilgi}`);
+            durumYaz('Popup açılmadı, satır atlanıyor...');
+            return 'hata';
+        }
         await bekle(ADIM_BEKLEME);
 
         miktarYaz(kutu, miktar);
         await bekle(ADIM_BEKLEME);
 
         const kaydet = gorunurAra(SEL_KAYDET);
-        if (!kaydet) { logYaz('HATA', `Kaydet butonu yok | ${bilgi}`); durumYaz('Kaydet butonu yok. Durdu.'); return 'hata'; }
+        if (!kaydet) {
+            logYaz('HATA', `Kaydet butonu yok | ${bilgi}`);
+            await popupTemizle();
+            return 'hata';
+        }
+        const uyari0 = window.__otoAlertSayac || 0;
         kaydet.click();
 
         if (hastane) D.hastaneler.push(hastane);
         D.teklif++;
+        D.ardisikHata = 0;
+        D.kurtarma = 0;
         durumKaydet();
         logYaz('TEKLİF', `miktar ${miktar} | ${bilgi}`);
         durumYaz(`Kaydediliyor (${miktar})...`);
         await bekle(KAYDET_SONRASI);
+        if ((window.__otoAlertSayac || 0) > uyari0) {
+            logYaz('UYARI', `kayıt sırasında sunucu uyarısı: ${String(window.__otoSonAlert || '').slice(0, 120)}`);
+        }
 
-        const x = disKapatBul();
-        if (!x) { logYaz('HATA', 'X bulunamadı'); durumYaz('X bulunamadı. Durdu.'); return 'hata'; }
+        const x = await bekleVeBul(disKapatBul, 8000);
+        if (!x) {
+            logYaz('HATA', 'X bulunamadı, popup temizleniyor');
+            await popupTemizle();
+            return 'teklif';
+        }
         x.click();
 
         await bekleVeBul(() => !gorunurAra(SEL_MIKTAR), POPUP_BEKLEME);
@@ -291,8 +437,24 @@
         return 'teklif';
     }
 
+    // ---------- Geçiş bekleme: 'ok' | 'uyari' | 'bos' | 'zaman' | 'dur' ----------
+    // İstek sunucuda sürdüğü sürece (yavaş da olsa) bekler; sadece cevap geldiği halde
+    // sayfa değişmediyse, sunucu hata verdiyse ya da azami süre dolduysa pes eder.
+    async function gecisBekle(kosul, bas, uyari0, etiket) {
+        const limit = Math.max(A.gecisSn, 60) * 1000;
+        while (true) {
+            if (durduruldu) return 'dur';
+            if (kosul()) return 'ok';
+            if ((window.__otoAlertSayac || 0) > uyari0) return 'uyari';
+            const gecen = Date.now() - bas;
+            if (!sunucuMesgul() && gecen > 6000) return 'bos';
+            if (gecen > limit) return 'zaman';
+            durumYaz(`${etiket} bekleniyor... ${Math.round(gecen / 1000)}/${Math.round(limit / 1000)} sn`);
+            await bekle(250);
+        }
+    }
+
     // ---------- Sonraki sayfa: 'ok' | 'son' | 'yok' | 'zaman' ----------
-    // Sunucu hata verirse (uyarı çıkarsa) veya süre dolarsa, A.deneme kadar tekrar dener
     async function sonrakiSayfa() {
         const pb = sayfaBilgi();
         if (!pb.cur) return 'yok';
@@ -304,44 +466,86 @@
 
         for (let deneme = 1; deneme <= A.deneme; deneme++) {
             if (durduruldu) return 'zaman';
-            const sonraki = document.querySelector(SEL_PAGER + ' a[id$="DXPagerBottom_PBN"]');
-            if (!sonraki) return degisti() ? 'ok' : 'yok';
+
+            // Önceki denemeden kalan istek hâlâ sürüyorsa tekrar tıklama, bitmesini bekle
+            if (!(await bosBekle(SUNUCU_BOS_MAX, 'sayfa geçişi'))) return 'zaman';
 
             const bas = Date.now();
-            const limit = A.gecisSn * 1000;
-            const uyari0 = window.__otoAlertSayac || 0;
-            const uyariGeldi = () => (window.__otoAlertSayac || 0) > uyari0;
-
-            if (deneme > 1) logYaz('SAYFA', `geçiş tekrar deneniyor (${deneme}/${A.deneme})`);
-            sonraki.click();
-
-            await bekleVeBul(() => {
-                const sn = Math.round((Date.now() - bas) / 1000);
-                durumYaz(`Sayfa geçişi bekleniyor... ${sn}/${A.gecisSn} sn (deneme ${deneme}/${A.deneme})`);
-                return degisti() || uyariGeldi();
-            }, limit);
-
+            let sonuc;
             if (degisti()) {
+                sonuc = 'ok'; // yavaş gelen önceki cevap sayfayı zaten değiştirmiş
+            } else {
+                const sonraki = document.querySelector(SEL_PAGER + ' a[id$="DXPagerBottom_PBN"]');
+                if (!sonraki) return 'yok';
+                const uyari0 = window.__otoAlertSayac || 0;
+                if (deneme > 1) logYaz('SAYFA', `geçiş tekrar deneniyor (${deneme}/${A.deneme})`);
+                sonraki.click();
+                sonuc = await gecisBekle(degisti, bas, uyari0, `Sayfa geçişi (deneme ${deneme}/${A.deneme})`);
+            }
+
+            if (sonuc === 'dur') return 'zaman';
+            if (sonuc === 'ok') {
                 await bekleVeBul(() => satirImza() !== imza0, 15000);
+                await bosBekle(120000, 'sayfa sonrası');
                 await bekle(1500);
                 const sn = Math.round((Date.now() - bas) / 1000);
                 logYaz('SAYFA', `${onceki} -> ${sayfaBilgi().cur} geçildi (${sn} sn)`);
+                D.kurtarma = 0;
+                durumKaydet();
                 return 'ok';
             }
 
-            if (durduruldu) return 'zaman';
             const sn = Math.round((Date.now() - bas) / 1000);
-            const neden = uyariGeldi()
+            const neden = sonuc === 'uyari'
                 ? `sunucu hata verdi: ${String(window.__otoSonAlert || '').slice(0, 120)}`
-                : 'süre doldu';
+                : (sonuc === 'bos' ? 'cevap geldi ama sayfa değişmedi' : 'süre doldu');
             logYaz('HATA', `sayfa geçişi başarısız (${neden}, ${sn} sn), deneme ${deneme}/${A.deneme}`);
 
             if (deneme < A.deneme) {
                 durumYaz(`Geçiş başarısız, ${TEKRAR_BEKLEME / 1000} sn sonra tekrar denenecek...`);
-                await bekle(TEKRAR_BEKLEME);
+                await bekleVeBul(() => false, TEKRAR_BEKLEME);
             }
         }
         return 'zaman';
+    }
+
+    // ---------- Belirli sayfaya doğrudan git (yenileme sonrası) ----------
+    async function hedefeGit(hedef) {
+        const g = gridNesne();
+        if (!g) { logYaz('HATA', 'grid nesnesi bulunamadı, ilk sayfadan devam edilecek'); return false; }
+        const uyari0 = window.__otoAlertSayac || 0;
+        const bas = Date.now();
+        logYaz('SAYFA', `${hedef}. sayfaya doğrudan gidiliyor`);
+        try { g.GotoPage(hedef - 1); } catch (e) { logYaz('HATA', 'GotoPage hatası: ' + (e && e.message)); return false; }
+        const s = await gecisBekle(() => sayfaBilgi().cur === hedef, bas, uyari0, 'Hedef sayfa');
+        if (s === 'ok') {
+            await bosBekle(120000, 'hedef sayfa');
+            await bekle(1500);
+            logYaz('SAYFA', `${hedef}. sayfaya gidildi (${Math.round((Date.now() - bas) / 1000)} sn)`);
+            return true;
+        }
+        logYaz('HATA', `hedef sayfaya gidilemedi (${s}), ilk sayfadan devam edilecek`);
+        return false;
+    }
+
+    // ---------- Toparlanma: sayfayı yenile, kaldığı sayfaya dön, devam et ----------
+    async function kurtar(neden) {
+        D.kurtarma = (D.kurtarma || 0) + 1;
+        if (D.kurtarma > KURTARMA_MAX) return false;
+        D.hedef = D.sayfa;
+        D.run = true;
+        durumKaydet();
+        logYaz('KURTAR', `${neden} | ${KURTAR_BEKLEME / 1000} sn sonra sayfa yenilenecek (${D.kurtarma}/${KURTARMA_MAX}), hedef sayfa ${D.hedef}`);
+        const bas = Date.now();
+        while (Date.now() - bas < KURTAR_BEKLEME) {
+            if (durduruldu) return false;
+            durumYaz(`Toparlanma: ${Math.round((KURTAR_BEKLEME - (Date.now() - bas)) / 1000)} sn sonra sayfa yenilenecek`);
+            await bekle(500);
+        }
+        try { localStorage.setItem(LOG_KEY, JSON.stringify(L)); } catch (e) {}
+        location.reload();
+        await bekle(120000);
+        return true;
     }
 
     // ---------- Ana döngü ----------
@@ -352,9 +556,30 @@
         D.run = true;
         durumKaydet();
         let bitisMesaji = '';
+        let yenileniyor = false;
+
+        const kurtarDene = async (neden) => {
+            const r = await kurtar(neden);
+            if (r) yenileniyor = true;
+            else if (!durduruldu) bitisMesaji = `Toparlanma hakkı bitti: ${neden}`;
+            durduruldu = true;
+        };
 
         try {
-            while (!durduruldu) {
+            // Yenileme sonrası kaldığı sayfaya dön
+            if (D.hedef) {
+                const hedef = D.hedef;
+                D.hedef = null;
+                durumKaydet();
+                const cur = sayfaBilgi().cur;
+                if (cur && cur < hedef) await hedefeGit(hedef);
+            }
+
+            dis: while (!durduruldu) {
+                if (!(await bosBekle(SUNUCU_BOS_MAX, 'sayfa başı'))) {
+                    if (!durduruldu) await kurtarDene('sunucu yanıt vermiyor');
+                    break;
+                }
                 const pb = sayfaBilgi();
                 if (D.sayfa !== pb.cur) { D.sayfa = pb.cur; D.done = []; durumKaydet(); }
                 logYaz('SAYFA', `${D.sayfa}. sayfa işleniyor`);
@@ -362,9 +587,27 @@
                 const k = kolonlar();
                 let satir;
                 while (!durduruldu && (satir = sonrakiSatir())) {
+                    const p = sayfaBilgi();
+                    if (p.cur && D.sayfa && p.cur !== D.sayfa) {
+                        logYaz('SAYFA', `işlem sırasında sayfa değişti (${D.sayfa} -> ${p.cur}), yeniden okunuyor`);
+                        continue dis;
+                    }
                     const s = await satirIsle(satir, k);
                     durumYaz(`Sayfa ${D.sayfa} | Teklif: ${D.teklif} | Atlanan: ${D.atlanan}`);
-                    if (s === 'hata') { bitisMesaji = 'Hata ile durdu.'; durduruldu = true; break; }
+                    if (s === 'dur') break;
+                    if (s === 'hata') {
+                        D.ardisikHata = (D.ardisikHata || 0) + 1;
+                        durumKaydet();
+                        await popupTemizle();
+                        if (D.ardisikHata >= ARDISIK_HATA_LIMIT) {
+                            D.ardisikHata = 0;
+                            durumKaydet();
+                            await kurtarDene(`${ARDISIK_HATA_LIMIT} satır üst üste hata verdi`);
+                            break;
+                        }
+                        await bekle(2000);
+                        continue;
+                    }
                     if (s === 'teklif' && D.teklif >= A.maxTeklif) { bitisMesaji = 'Teklif limiti doldu.'; durduruldu = true; break; }
                     if (s === 'atla') await bekle(5);
                 }
@@ -376,15 +619,17 @@
                 if (durduruldu) break;
                 if (g === 'son') { bitisMesaji = 'Son sayfaya gelindi.'; break; }
                 if (g === 'yok') { bitisMesaji = 'Sonraki sayfa butonu bulunamadı.'; break; }
-                if (g === 'zaman') { bitisMesaji = `Sayfa geçişi ${A.deneme} denemede de olmadı (sunucu yanıt vermedi/hata verdi).`; break; }
+                if (g === 'zaman') { await kurtarDene(`sayfa geçişi ${A.deneme} denemede olmadı`); break; }
                 D.sayfaSayac++;
                 durumKaydet();
             }
         } catch (e) {
             console.error('[Oto] hata', e);
             logYaz('HATA', 'beklenmeyen hata: ' + (e && e.message));
-            bitisMesaji = 'Beklenmeyen hata, konsola bak.';
+            if (!durduruldu) await kurtarDene('beklenmeyen hata: ' + (e && e.message));
         }
+
+        if (yenileniyor) { calisiyor = false; return; }
 
         D.run = false;
         durumKaydet();
@@ -409,7 +654,7 @@
         border:2px solid #333;padding:10px;border-radius:8px;font-family:sans-serif;
         font-size:12px;box-shadow:0 2px 10px rgba(0,0,0,.3);width:250px`;
     panel.innerHTML = `
-        <div style="font-weight:bold;margin-bottom:6px;">Stok Otomasyon v4.5</div>
+        <div style="font-weight:bold;margin-bottom:6px;">Stok Otomasyon v4.6</div>
         ${alan('oYuzde', 'Max yüzde (%)', A.yuzde)}
         ${alan('oMin', 'Min teklif', A.min)}
         ${alan('oMax', 'Max teklif', A.max)}
@@ -417,7 +662,7 @@
         ${alan('oGun', 'Miad en az (gün)', A.gun)}
         ${alan('oMaxTeklif', 'Toplam teklif sınırı', A.maxTeklif)}
         ${alan('oMaxSayfa', 'Sayfa sınırı', A.maxSayfa)}
-        ${alan('oGecis', 'Sayfa geçiş bekleme (sn)', A.gecisSn)}
+        ${alan('oGecis', 'Sayfa geçiş azami bekleme (sn)', A.gecisSn)}
         ${alan('oDeneme', 'Sayfa geçiş deneme sayısı', A.deneme)}
         <label style="display:block;margin:4px 0 6px;">
             <input id="oHastane" type="checkbox" ${A.hastaneTek ? 'checked' : ''}> Aynı hastaneye tekrar atma</label>
@@ -488,19 +733,20 @@
 
         const pb = sayfaBilgi();
         D.sayfa = pb.cur; D.done = []; D.teklif = 0; D.atlanan = 0; D.sayfaSayac = 1; D.nedenler = {};
+        D.hedef = null; D.ardisikHata = 0; D.kurtarma = 0;
         durumKaydet();
 
         // Yeni çalıştırma: eski log silinir
         L = [];
         const t = new Date();
-        logYaz('BAŞLA', `${t.toLocaleDateString('tr-TR')} | yüzde ${A.yuzde}, min ${A.min}, max ${A.max}, adım ${A.adim}, miad ${A.gun} gün, teklif sınırı ${A.maxTeklif}, sayfa sınırı ${A.maxSayfa}, geçiş bekleme ${A.gecisSn} sn x ${A.deneme} deneme, aynı hastane engeli ${A.hastaneTek ? 'açık' : 'kapalı'}`);
+        logYaz('BAŞLA', `${t.toLocaleDateString('tr-TR')} | yüzde ${A.yuzde}, min ${A.min}, max ${A.max}, adım ${A.adim}, miad ${A.gun} gün, teklif sınırı ${A.maxTeklif}, sayfa sınırı ${A.maxSayfa}, geçiş azami bekleme ${A.gecisSn} sn x ${A.deneme} deneme, aynı hastane engeli ${A.hastaneTek ? 'açık' : 'kapalı'}`);
         calistir();
     };
     panel.querySelector('#oDur').onclick = () => {
-        durduruldu = true; D.run = false; durumKaydet(); durumYaz('Durduruldu.');
+        durduruldu = true; D.run = false; D.hedef = null; durumKaydet(); durumYaz('Durduruldu.');
     };
     panel.querySelector('#oSifir').onclick = () => {
-        durduruldu = true; D = { run: false, sayfa: null, done: [], hastaneler: [], teklif: 0, atlanan: 0, sayfaSayac: 0, nedenler: {} };
+        durduruldu = true; D = D0();
         durumKaydet(); durumYaz('Sıfırlandı (hastane listesi dahil).');
         logYaz('SIFIRLA', 'hastane listesi ve sayaçlar sıfırlandı');
     };
