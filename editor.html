@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body{margin:0;font:13px sans-serif;display:flex;flex-direction:column;height:100vh}
+  #bar{padding:6px;display:flex;gap:6px;align-items:center;background:#eee;flex-wrap:wrap}
+  #bar button{padding:4px 8px;cursor:pointer}
+  textarea{flex:1;font:12px Consolas,monospace;white-space:pre;border:0;padding:8px;outline:none;resize:none}
+  .hata{color:#c00}
+  .ok{color:#0a7a2f}
+</style>
+</head>
+<body>
+<div id="bar">
+  <button id="pano">Panodakini yapıştır (hepsini değiştirir)</button>
+  <button id="k">Kaydet</button>
+  <button id="ky">Kaydet + sekmeleri yenile</button>
+  <button id="v">Varsayılana dön</button>
+  <span id="d"></span>
+</div>
+<textarea id="t" spellcheck="false"></textarea>
+<script>
+const $ = (id) => document.getElementById(id);
+function durum(m, h) { $('d').textContent = m; $('d').className = h ? 'hata' : 'ok'; }
+
+async function yukle() {
+  const r = await api.al('script:oku');
+  $('t').value = r.kod;
+  durum(r.ozel ? 'Kayıtlı sürüm kullanılıyor.' : 'Gömülü sürüm kullanılıyor.');
+}
+async function kaydet(yenile) {
+  const kod = $('t').value;
+  try { new Function(kod); }
+  catch (e) { durum('Sözdizimi hatası, kaydedilmedi: ' + e.message, true); return; }
+  const r = await api.al('script:kaydet', kod, yenile);
+  if (r.ok) durum(yenile ? 'Kaydedildi, sekmeler yenilendi.' : 'Kaydedildi. Sekme yenilenince geçerli olur.');
+  else durum('Hata: ' + r.hata, true);
+}
+$('pano').onclick = async () => {
+  const s = await api.al('pano');
+  if (s) { $('t').value = s; durum('Yapıştırıldı. Kaydet\'e bas.'); }
+  else durum('Pano boş.', true);
+};
+$('k').onclick = () => kaydet(false);
+$('ky').onclick = () => kaydet(true);
+$('v').onclick = async () => {
+  if (!confirm('Kayıtlı script silinsin, gömülü sürüme dönülsün mü?')) return;
+  const r = await api.al('script:varsayilan');
+  $('t').value = r.kod;
+  durum('Gömülü sürüme dönüldü.');
+};
+yukle();
+</script>
+</body>
+</html>

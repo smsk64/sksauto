@@ -1,0 +1,21 @@
+{
+  "name": "stok-oto-pencere",
+  "version": "1.0.0",
+  "description": "Stok Oto Pencere",
+  "author": "cnbrkc",
+  "main": "main.js",
+  "scripts": {
+    "build": "electron-builder --win portable --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.cnbrkc.stokoto",
+    "productName": "StokOto",
+    "files": ["main.js", "preload.js", "preload-tab.js", "ui.html", "editor.html", "debug.html", "script.user.js"],
+    "win": { "target": "portable" },
+    "portable": { "artifactName": "StokOto.exe" }
+  }
+}

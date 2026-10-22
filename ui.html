@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body{margin:0;font:13px sans-serif;background:#2b2b2b;color:#fff;user-select:none;overflow:hidden}
+  #tabs{display:flex;height:36px;align-items:flex-end;gap:2px;padding:0 4px;box-sizing:border-box}
+  .tab{padding:7px 12px;background:#4a4a4a;border-radius:6px 6px 0 0;cursor:pointer;display:flex;gap:8px;align-items:center}
+  .tab.on{background:#fff;color:#000}
+  .x{opacity:.6;padding:0 2px}
+  .x:hover{opacity:1;color:#c00}
+  #plus{padding:7px 12px;cursor:pointer;background:#3a3a3a;border-radius:6px 6px 0 0}
+  .bar{display:flex;height:40px;gap:4px;padding:6px 4px;box-sizing:border-box;background:#fff;color:#000;align-items:center}
+  .bar input[type=text],.bar input[type=password]{padding:0 8px;height:26px;border:1px solid #999;border-radius:4px;box-sizing:border-box}
+  .bar button{padding:0 10px;height:26px;cursor:pointer;white-space:nowrap}
+  #url{flex:1}
+  #pc{min-width:44px;text-align:center;cursor:pointer}
+  .ayrac{width:1px;height:20px;background:#bbb;margin:0 4px}
+  #bar2{border-top:1px solid #ddd}
+  #gd{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#444}
+</style>
+</head>
+<body>
+<div id="tabs"></div>
+<div class="bar">
+  <button id="yenile" title="Yenile">⟳</button>
+  <input id="url" type="text" placeholder="Adres yaz, Enter">
+  <button id="git">Git</button>
+  <button id="hepsi">Hepsine uygula</button>
+  <span class="ayrac"></span>
+  <button id="zeksi">−</button>
+  <span id="pc" title="100% yap">100%</span>
+  <button id="zarti">+</button>
+  <button id="zhepsi" title="Bu zoom'u tüm sekmelere uygula">Zoom: hepsi</button>
+  <span class="ayrac"></span>
+  <button id="editor" title="Scripti düzenle">Script</button>
+  <button id="debug" title="Hata ayıklama raporu">Debug</button>
+</div>
+<div class="bar" id="bar2">
+  <span>Kullanıcı</span>
+  <input id="us" type="text" style="width:130px" autocomplete="off">
+  <span>Parola</span>
+  <input id="pw" type="password" style="width:130px" autocomplete="new-password">
+  <label style="white-space:nowrap"><input id="oto" type="checkbox"> Otomatik giriş</label>
+  <button id="kaydet">Kaydet</button>
+  <button id="kaydetH">Hepsine kaydet</button>
+  <button id="simdi">Şimdi gir</button>
+  <button id="teshis" title="Giriş formu bilgisini panoya kopyalar">Teşhis</button>
+  <span id="gd"></span>
+</div>
+<script>
+let S = null, sonId = null;
+const $ = (id) => document.getElementById(id);
+const aktif = () => S && S.tabs.find((t) => t.id === S.active);
+
+api.durum((s) => { S = s; ciz(); });
+
+function ciz() {
+  const t = $('tabs'); t.innerHTML = '';
+  S.tabs.forEach((tb) => {
+    const d = document.createElement('div');
+    d.className = 'tab' + (tb.id === S.active ? ' on' : '');
+    const ad = document.createElement('span'); ad.textContent = tb.name;
+    const x = document.createElement('span'); x.textContent = '×'; x.className = 'x';
+    x.onclick = (e) => {
+      e.stopPropagation();
+      if (confirm('"' + tb.name + '" sekmesi kapatılsın mı?')) api.gonder('kapat', tb.id);
+    };
+    d.appendChild(ad); d.appendChild(x);
+    d.onclick = () => { if (tb.id !== S.active) api.gonder('sec', tb.id); };
+    d.ondblclick = () => {
+      const i = document.createElement('input');
+      i.type = 'text'; i.value = tb.name; i.style.width = '70px';
+      ad.replaceWith(i); i.focus(); i.select();
+      i.onclick = (e) => e.stopPropagation();
+      i.onblur = () => api.gonder('ad', tb.id, i.value.trim() || tb.name);
+      i.onkeydown = (e) => { if (e.key === 'Enter') i.blur(); };
+    };
+    t.appendChild(d);
+  });
+  const p = document.createElement('div');
+  p.id = 'plus'; p.textContent = '+'; p.onclick = () => api.gonder('ekle');
+  t.appendChild(p);
+
+  const a = aktif();
+  if (!a) return;
+  if (document.activeElement !== $('url')) $('url').value = a.url || '';
+  $('pc').textContent = Math.round((a.zoom || 1) * 100) + '%';
+  if (document.activeElement !== $('us')) $('us').value = a.user || '';
+  $('pw').placeholder = a.hasPass ? '●●●● kayıtlı' : 'parola';
+  if (sonId !== a.id) { $('oto').checked = a.auto; $('gd').textContent = ''; sonId = a.id; }
+}
+
+const git = () => { const a = aktif(); if (a) api.gonder('git', a.id, $('url').value); };
+$('git').onclick = git;
+$('url').onkeydown = (e) => { if (e.key === 'Enter') git(); };
+$('hepsi').onclick = () => api.gonder('hepsi', $('url').value);
+$('yenile').onclick = () => { const a = aktif(); if (a) api.gonder('yenile', a.id); };
+
+$('zeksi').onclick = () => { const a = aktif(); if (a) api.gonder('zoom', a.id, -0.1); };
+$('zarti').onclick = () => { const a = aktif(); if (a) api.gonder('zoom', a.id, 0.1); };
+$('pc').onclick = () => { const a = aktif(); if (a) api.gonder('zoom1', a.id); };
+$('zhepsi').onclick = () => { const a = aktif(); if (a) api.gonder('zoomhepsi', a.id); };
+$('editor').onclick = () => api.gonder('editor');
+$('debug').onclick = () => api.gonder('debug');
+
+function girisKaydet(hepsi) {
+  const a = aktif(); if (!a) return;
+  api.gonder('giris', a.id, $('us').value.trim(), $('pw').value, $('oto').checked, hepsi);
+  $('pw').value = '';
+  $('gd').textContent = hepsi ? 'Tüm sekmelere kaydedildi.' : 'Kaydedildi.';
+}
+$('kaydet').onclick = () => girisKaydet(false);
+$('kaydetH').onclick = () => girisKaydet(true);
+
+$('simdi').onclick = async () => {
+  const a = aktif(); if (!a) return;
+  const b = $('simdi'); b.disabled = true;
+  $('gd').textContent = 'Deneniyor (yaklaşık 9 sn)...';
+  $('gd').textContent = await api.al('simdi', a.id);
+  b.disabled = false;
+};
+$('teshis').onclick = async () => {
+  const a = aktif(); if (!a) return;
+  $('gd').textContent = await api.al('teshis', a.id);
+};
+</script>
+</body>
+</html>
