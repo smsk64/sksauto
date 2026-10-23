@@ -14,7 +14,7 @@
   "build": {
     "appId": "com.cnbrkc.stokoto",
     "productName": "StokOto",
-    "files": ["main.js", "preload.js", "preload-tab.js", "ui.html", "editor.html", "debug.html", "ayarlar.html", "script.user.js"],
+    "files": ["main.js", "preload.js", "preload-tab.js", "ui.html", "editor.html", "debug.html", "ayarlar.html", "script.user.js", "silme.user.js"],
     "win": { "target": "portable" },
     "portable": { "artifactName": "StokOto.exe" }
   }
