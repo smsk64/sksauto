@@ -222,6 +222,9 @@ function scriptOku() {
   try { if (fs.existsSync(SCRIPT)) return fs.readFileSync(SCRIPT, 'utf8'); } catch (e) {}
   return gomuluScript();
 }
+function silmeOku() {
+  try { return fs.readFileSync(path.join(__dirname, 'silme.user.js'), 'utf8'); } catch (e) { return ''; }
+}
 function tabBul(id) { return cfg.tabs.find((t) => t.id === id); }
 function normURL(u) {
   u = (u || '').trim();
@@ -474,6 +477,12 @@ function viewOlustur(tab) {
       wc.executeJavaScript(
         'if(!window.__oto){window.__oto=1;\n' + HASTANE_ONKOD + kod + '\n}'
       ).catch((err) => L('HATA', 'script enjeksiyon hatası: ' + (err && err.message)));
+    }
+    const kod2 = silmeOku();
+    if (kod2) {
+      wc.executeJavaScript(
+        'if(!window.__otoSil){window.__otoSil=1;\n' + kod2 + '\n}'
+      ).catch((err) => L('HATA', 'silme script enjeksiyon hatası: ' + (err && err.message)));
     }
     const l = loginDene(tab.id, false);
     if (l) l.catch(() => {});
