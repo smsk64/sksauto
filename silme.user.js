@@ -10,8 +10,8 @@
     const KEY = 'oto_sil_durum_v2';
     const AYAR_KEY = 'oto_sil_ayar_v1';
     const CLICK_ARA = 150;          // hızlı modda tıklamalar arası (ms)
-    const ILK_BEKLEME = 60000;      // tıklamadan sonra ilk silinmeyi bekleme
-    const SAKIN_BEKLEME = 20000;    // son silinmeden sonra yeni silinme gelmezse kalanlar "işlenmedi" sayılır
+    const ILK_BEKLEME = 30000;      // tıklamadan sonra ilk silinmeyi bekleme
+    const SAKIN_BEKLEME = 3000;    // son silinmeden sonra yeni silinme gelmezse kalanlar "işlenmedi" sayılır
     const MAX_DENEME = 3;           // aynı talebe en fazla bu kadar tıklanır
     const ARDISIK_LIMIT = 3;        // üst üste bu kadar tur sonuçsuz kalırsa dur
 
