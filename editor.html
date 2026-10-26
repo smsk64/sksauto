@@ -3,40 +3,60 @@
 <head>
 <meta charset="utf-8">
 <style>
-  body{margin:0;font:13px sans-serif;display:flex;flex-direction:column;height:100vh}
-  #bar{padding:6px;display:flex;gap:6px;align-items:center;background:#eee;flex-wrap:wrap}
-  #bar button{padding:4px 8px;cursor:pointer}
-  textarea{flex:1;font:12px Consolas,monospace;white-space:pre;border:0;padding:8px;outline:none;resize:none}
-  .hata{color:#c00}
-  .ok{color:#0a7a2f}
+  *{box-sizing:border-box}
+  body{margin:0;font:13px/1.3 "Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;height:100vh;color:#1d2330}
+  #bar{padding:10px 12px;display:flex;gap:8px;align-items:center;background:#f4f5f7;border-bottom:1px solid #e1e4e8;flex-wrap:wrap}
+  #bar button,#bar select{height:32px;padding:0 12px;border:1px solid #d0d5dd;background:#fff;border-radius:8px;font:inherit;cursor:pointer;color:#1d2330}
+  #bar button:hover{background:#eef0f4}
+  #bar button.p{background:#3b5bfd;border-color:#3b5bfd;color:#fff;font-weight:600}
+  #bar button.p:hover{background:#2f49d1}
+  #bar select{font-weight:600;padding:0 8px}
+  #uyari{display:none;padding:8px 12px;background:#fff4e5;color:#8a4b00;border-bottom:1px solid #f3d3a5;font-size:12px}
+  textarea{flex:1;font:12px Consolas,monospace;white-space:pre;border:0;padding:10px;outline:none;resize:none}
+  .hata{color:#b42318}
+  .ok{color:#067647}
 </style>
 </head>
 <body>
 <div id="bar">
+  <select id="h" title="Hangi scripti düzenliyorsun?">
+    <option value="stok">Teklif scripti (Stok sayfası)</option>
+    <option value="silme">Silme scripti (Teklif silme)</option>
+  </select>
   <button id="pano">Panodakini yapıştır (hepsini değiştirir)</button>
-  <button id="k">Kaydet</button>
+  <button id="k" class="p">Kaydet</button>
   <button id="ky">Kaydet + sekmeleri yenile</button>
   <button id="v">Varsayılana dön</button>
   <span id="d"></span>
 </div>
+<div id="uyari"></div>
 <textarea id="t" spellcheck="false"></textarea>
 <script>
 const $ = (id) => document.getElementById(id);
 function durum(m, h) { $('d').textContent = m; $('d').className = h ? 'hata' : 'ok'; }
+const hangi = () => $('h').value;
 
 async function yukle() {
-  const r = await api.al('script:oku');
+  const r = await api.al('script:oku', hangi());
   $('t').value = r.kod;
   durum(r.ozel ? 'Kayıtlı sürüm kullanılıyor.' : 'Gömülü sürüm kullanılıyor.');
+  const u = $('uyari');
+  if (r.ozel && r.gomuluSurum && r.ozelSurum !== r.gomuluSurum) {
+    u.style.display = 'block';
+    u.textContent = 'Dikkat: kayıtlı sürüm (' + (r.ozelSurum || 'bilinmiyor') + ') uygulamayla gelen sürümden (' + r.gomuluSurum + ') farklı. Yeni özellikleri almak için "Varsayılana dön" yapabilirsin; kendi değişikliklerin silinir.';
+  } else {
+    u.style.display = 'none';
+  }
 }
 async function kaydet(yenile) {
   const kod = $('t').value;
   try { new Function(kod); }
   catch (e) { durum('Sözdizimi hatası, kaydedilmedi: ' + e.message, true); return; }
-  const r = await api.al('script:kaydet', kod, yenile);
-  if (r.ok) durum(yenile ? 'Kaydedildi, sekmeler yenilendi.' : 'Kaydedildi. Sekme yenilenince geçerli olur.');
+  const r = await api.al('script:kaydet', kod, yenile, hangi());
+  if (r.ok) { durum(yenile ? 'Kaydedildi, sekmeler yenilendi.' : 'Kaydedildi. Sekme yenilenince geçerli olur.'); yukle(); }
   else durum('Hata: ' + r.hata, true);
 }
+$('h').onchange = yukle;
 $('pano').onclick = async () => {
   const s = await api.al('pano');
   if (s) { $('t').value = s; durum('Yapıştırıldı. Kaydet\'e bas.'); }
@@ -46,9 +66,10 @@ $('k').onclick = () => kaydet(false);
 $('ky').onclick = () => kaydet(true);
 $('v').onclick = async () => {
   if (!confirm('Kayıtlı script silinsin, gömülü sürüme dönülsün mü?')) return;
-  const r = await api.al('script:varsayilan');
+  const r = await api.al('script:varsayilan', hangi());
   $('t').value = r.kod;
   durum('Gömülü sürüme dönüldü.');
+  yukle();
 };
 yukle();
 </script>
