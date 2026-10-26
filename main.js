@@ -21,6 +21,7 @@ if (fs.existsSync(path.join(BASE, 'veri', 'gpu-kapat.txt'))) {
 
 const CFG = path.join(BASE, 'veri', 'ayar.json');
 const SCRIPT = path.join(BASE, 'veri', 'script.user.js');
+const SILME = path.join(BASE, 'veri', 'silme.user.js');
 const DEBUG_FILE = path.join(BASE, 'veri', 'debug.log');
 const TAB_PRELOAD = path.join(__dirname, 'preload-tab.js');
 const TOOLBAR_H = 84;
@@ -215,15 +216,18 @@ function push() {
   });
 }
 
-function gomuluScript() {
-  try { return fs.readFileSync(path.join(__dirname, 'script.user.js'), 'utf8'); } catch (e) { return ''; }
+function dosyaYolu(h) { return h === 'silme' ? SILME : SCRIPT; }
+function gomuluKod(h) {
+  try { return fs.readFileSync(path.join(__dirname, h === 'silme' ? 'silme.user.js' : 'script.user.js'), 'utf8'); } catch (e) { return ''; }
 }
-function scriptOku() {
-  try { if (fs.existsSync(SCRIPT)) return fs.readFileSync(SCRIPT, 'utf8'); } catch (e) {}
-  return gomuluScript();
+function scriptOku(h) {
+  try { if (fs.existsSync(dosyaYolu(h))) return fs.readFileSync(dosyaYolu(h), 'utf8'); } catch (e) {}
+  return gomuluKod(h);
 }
-function silmeOku() {
-  try { return fs.readFileSync(path.join(__dirname, 'silme.user.js'), 'utf8'); } catch (e) { return ''; }
+function silmeOku() { return scriptOku('silme'); }
+function surumOku(kod) {
+  const m = String(kod || '').match(/@version\s+([^\s]+)/);
+  return m ? m[1] : '';
 }
 function tabBul(id) { return cfg.tabs.find((t) => t.id === id); }
 function normURL(u) {
@@ -472,12 +476,17 @@ function viewOlustur(tab) {
 
   wc.on('did-finish-load', () => {
     wc.setZoomFactor(tab.zoom || 1);
-    const kod = scriptOku();
+    const kod = scriptOku('stok');
     if (kod) {
       wc.executeJavaScript(
         'if(!window.__oto){window.__oto=1;\n' + HASTANE_ONKOD + kod + '\n}'
       ).catch((err) => L('HATA', 'script enjeksiyon hatası: ' + (err && err.message)));
     }
+    ['stok', 'silme'].forEach((h) => {
+      if (fs.existsSync(dosyaYolu(h)) && surumOku(scriptOku(h)) !== surumOku(gomuluKod(h))) {
+        L('UYARI', h + ' scripti: kayıtlı sürüm (' + (surumOku(scriptOku(h)) || '?') + ') gömülü sürümden (' + (surumOku(gomuluKod(h)) || '?') + ') farklı, kayıtlı olan kullanılıyor');
+      }
+    });
     const kod2 = silmeOku();
     if (kod2) {
       wc.executeJavaScript(
@@ -686,20 +695,28 @@ ipcMain.handle('dbg:kopya', async () => {
 
 // Script editörü
 ipcMain.on('editor', editorAc);
-ipcMain.handle('script:oku', () => ({ kod: scriptOku(), ozel: fs.existsSync(SCRIPT) }));
-ipcMain.handle('script:kaydet', (e, kod, yenile) => {
+ipcMain.handle('script:oku', (e, h) => {
+  const ozel = fs.existsSync(dosyaYolu(h));
+  return {
+    kod: scriptOku(h),
+    ozel,
+    gomuluSurum: surumOku(gomuluKod(h)),
+    ozelSurum: ozel ? surumOku(scriptOku(h)) : ''
+  };
+});
+ipcMain.handle('script:kaydet', (e, kod, yenile, h) => {
   try {
-    fs.mkdirSync(path.dirname(SCRIPT), { recursive: true });
-    fs.writeFileSync(SCRIPT, kod, 'utf8');
+    fs.mkdirSync(path.dirname(dosyaYolu(h)), { recursive: true });
+    fs.writeFileSync(dosyaYolu(h), kod, 'utf8');
     if (yenile) Object.values(views).forEach((v) => v.webContents.reload());
     return { ok: true };
   } catch (err) {
     return { ok: false, hata: String(err && err.message) };
   }
 });
-ipcMain.handle('script:varsayilan', () => {
-  try { fs.unlinkSync(SCRIPT); } catch (e) {}
-  return { kod: scriptOku() };
+ipcMain.handle('script:varsayilan', (e, h) => {
+  try { fs.unlinkSync(dosyaYolu(h)); } catch (err) {}
+  return { kod: scriptOku(h) };
 });
 ipcMain.handle('pano', () => clipboard.readText());
 
