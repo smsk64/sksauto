@@ -1,19 +1,23 @@
-// Teklif silme otomasyonu - MalzemeyeGore.aspx (ASPxGridViewTalepDetay)
+// Teklif silme otomasyonu v2 - MalzemeyeGore.aspx (ASPxGridViewTalepDetay)
+// Talep numarasıyla takip: tıklanan her satırın gerçekten silindiği (sayfadan kaybolduğu) doğrulanır,
+// silinmeyenlere sadece tekrar tıklanır.
 (function () {
     'use strict';
     if (window.top !== window.self) return;
     if (!document.body || !document.querySelector('[id*="ASPxGridViewTalepDetay"]')) return;
 
     const SEL_SIL = 'input[id*="ASPxGridViewTalepDetay"][id$="_ASPxButtonSil_I"]';
-    const SEL_SATIR = 'tr[id*="ASPxGridViewTalepDetay_DXDataRow"]';
-    const KEY = 'oto_sil_durum_v1';
+    const KEY = 'oto_sil_durum_v2';
     const AYAR_KEY = 'oto_sil_ayar_v1';
-    const BEKLEME_MAX = 120000;   // bir silme için azami bekleme
-    const ARDISIK_LIMIT = 3;      // üst üste bu kadar silme sonuçsuz kalırsa dur
+    const CLICK_ARA = 150;          // hızlı modda tıklamalar arası (ms)
+    const ILK_BEKLEME = 60000;      // tıklamadan sonra ilk silinmeyi bekleme
+    const SAKIN_BEKLEME = 20000;    // son silinmeden sonra yeni silinme gelmezse kalanlar "işlenmedi" sayılır
+    const MAX_DENEME = 3;           // aynı talebe en fazla bu kadar tıklanır
+    const ARDISIK_LIMIT = 3;        // üst üste bu kadar tur sonuçsuz kalırsa dur
 
     let A = { toplu: false };
     try { Object.assign(A, JSON.parse(localStorage.getItem(AYAR_KEY) || '{}')); } catch (e) {}
-    let D = { run: false, silinen: 0, filtre: '', ardisik: 0 };
+    let D = { run: false, silinen: [], deneme: {}, filtre: '', ardisik: 0 };
     try { const s = JSON.parse(sessionStorage.getItem(KEY) || 'null'); if (s) Object.assign(D, s); } catch (e) {}
     const durumKaydet = () => { try { sessionStorage.setItem(KEY, JSON.stringify(D)); } catch (e) {} };
 
@@ -22,14 +26,12 @@
     let mod = 'bos';           // bos | onay | calisiyor
     const logSatir = [];
     const bekle = (ms) => new Promise((r) => setTimeout(r, ms));
+    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
 
     // ---- confirm() kutusunu otomatik onayla (sadece çalışırken) ----
     const asilConfirm = window.confirm;
     function confirmAc() {
-        window.confirm = function (m) {
-            logYaz('ONAY', String(m || '').slice(0, 80));
-            return true;
-        };
+        window.confirm = function () { return true; };
     }
     function confirmKapat() { window.confirm = asilConfirm; }
 
@@ -37,13 +39,28 @@
     function butonlar() {
         return [...document.querySelectorAll(SEL_SIL)].filter((b) => b.isConnected && !b.disabled);
     }
-    function satirAdi(b) {
-        const tr = b.closest('tr');
-        return tr ? (tr.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 70) : '?';
+    // "Talep No" sütununun satır içindeki sırası
+    function talepKolonu() {
+        const basliklar = [...document.querySelectorAll('td[id*="ASPxGridViewTalepDetay_col"]')];
+        const h = basliklar.find((td) => /TALEP\s*(NO|NUMARA)/.test(norm(td.textContent)));
+        if (!h || !h.parentElement) return -1;
+        return [...h.parentElement.children].indexOf(h);
     }
-    function imza() {
-        const bt = butonlar();
-        return bt.length + '|' + bt.map((b) => satirAdi(b)).join('||');
+    // Her silinebilir satır için anahtar (talep no; benzersiz değilse satır metni)
+    function satirlar() {
+        const idx = talepKolonu();
+        const ham = butonlar().map((b) => {
+            const tr = b.closest('tr');
+            let no = '';
+            if (tr && idx >= 0 && tr.children[idx]) no = norm(tr.children[idx].textContent);
+            if (!no && tr) { const m = (tr.textContent || '').match(/\d{5,}/); if (m) no = m[0]; }
+            return { btn: b, no, metin: tr ? norm(tr.textContent).slice(0, 160) : '' };
+        });
+        const say = {};
+        ham.forEach((h) => { if (h.no) say[h.no] = (say[h.no] || 0) + 1; });
+        const benzersiz = ham.every((h) => h.no && say[h.no] === 1);
+        ham.forEach((h) => { h.key = benzersiz ? h.no : h.metin; h.yontem = benzersiz ? (idx >= 0 ? 'Talep No sütunu' : 'satırdaki numara') : 'satır metni'; });
+        return ham;
     }
     // Seçili filtre (Giden / Kabul / Red) değişirse güvenlik için dur
     function filtreImza() {
@@ -59,24 +76,32 @@
         return String(t || '').replace(/\s+/g, ' ').trim().slice(0, 40);
     }
 
-    async function degisimBekle(imza0, ms) {
+    // Tıklanan anahtarların sayfadan kaybolmasını bekler (kaybolan = silindi)
+    // Döner: { kalan: [...anahtarlar], silinen: n, neden: 'tamam' | 'sakin' | 'zaman' | 'dur' }
+    async function kaybolmaBekle(anahtarlar) {
+        const bekleyen = new Set(anahtarlar);
         const bas = Date.now();
-        while (Date.now() - bas < ms) {
-            if (dur) return 'dur';
-            if (imza() !== imza0) return 'ok';
-            await bekle(300);
-        }
-        return 'zaman';
-    }
-    async function sakinBekle(sakinMs, maxMs) {
-        const bas = Date.now();
-        let son = imza(), sonDeg = Date.now();
-        while (Date.now() - bas < maxMs) {
-            if (dur) return;
-            const s = imza();
-            if (s !== son) { son = s; sonDeg = Date.now(); }
-            if (Date.now() - sonDeg >= sakinMs) return;
-            await bekle(300);
+        let son = null;
+        let silinen = 0;
+        while (true) {
+            if (dur) return { kalan: [...bekleyen], silinen, neden: 'dur' };
+            const simdi = new Set(satirlar().map((s) => s.key));
+            for (const k of [...bekleyen]) {
+                if (!simdi.has(k)) {
+                    bekleyen.delete(k);
+                    D.silinen.push(k);
+                    delete D.deneme[k];
+                    silinen++;
+                    son = Date.now();
+                    logYaz('SİLİNDİ', `talep ${k.slice(0, 40)} | toplam ${D.silinen.length}`);
+                }
+            }
+            if (silinen) durumKaydet();
+            if (!bekleyen.size) return { kalan: [], silinen, neden: 'tamam' };
+            const t = Date.now();
+            if (son === null && t - bas > ILK_BEKLEME) return { kalan: [...bekleyen], silinen, neden: 'zaman' };
+            if (son !== null && t - son > SAKIN_BEKLEME) return { kalan: [...bekleyen], silinen, neden: 'sakin' };
+            await bekle(150);
         }
     }
 
@@ -101,43 +126,39 @@
         try {
             while (!dur) {
                 if (filtreImza() !== D.filtre) { mesaj = 'Filtre değişti, güvenlik için durdu.'; break; }
-                const bt = butonlar();
-                if (!bt.length) { mesaj = 'Silinecek teklif kalmadı.'; break; }
-                const imza0 = imza();
-                const say0 = bt.length;
-                let sonuc;
+                const liste = satirlar();
+                if (!liste.length) { mesaj = 'Silinecek teklif kalmadı.'; break; }
 
-                if (A.toplu) {
-                    logYaz('SİL', `toplu: ${say0} satıra tıklanıyor`);
-                    for (const b of bt) {
-                        if (dur) break;
-                        if (!b.isConnected) continue;
-                        D.silinen++; durumKaydet();
-                        b.click();
-                        await bekle(350);
-                    }
-                    sonuc = await degisimBekle(imza0, BEKLEME_MAX);
-                    if (sonuc === 'ok') await sakinBekle(8000, 180000);
-                } else {
-                    logYaz('SİL', `${say0} kaldı | ${satirAdi(bt[0])}`);
-                    bt[0].scrollIntoView({ block: 'center' });
-                    await bekle(200);
-                    const uyari0 = window.__otoAlertSayac || 0;
-                    D.silinen++; durumKaydet();
-                    bt[0].click();
-                    sonuc = await degisimBekle(imza0, BEKLEME_MAX);
-                    if (sonuc === 'ok') await bekle(800);
-                    if ((window.__otoAlertSayac || 0) > uyari0) logYaz('UYARI', 'sayfa uyarısı: ' + String(window.__otoSonAlert || '').slice(0, 100));
+                const aday = liste.filter((s) => (D.deneme[s.key] || 0) < MAX_DENEME);
+                if (!aday.length) { mesaj = `${liste.length} teklif ${MAX_DENEME} denemede silinemedi, durdu.`; break; }
+
+                const parti = (A.toplu ? aday : aday.slice(0, 1)).map((s) => s.key);
+                logYaz('SİL', `${parti.length} talebe tıklanıyor (ekranda ${liste.length})`);
+
+                const tiklanan = [];
+                for (const k of parti) {
+                    if (dur) break;
+                    const s = satirlar().find((x) => x.key === k);
+                    if (!s) continue;                 // bu arada silinmiş
+                    D.deneme[k] = (D.deneme[k] || 0) + 1;
+                    durumKaydet();
+                    s.btn.click();
+                    tiklanan.push(k);
+                    if (A.toplu) await bekle(CLICK_ARA);
                 }
                 if (dur) break;
 
-                if (sonuc === 'ok') {
+                const r = await kaybolmaBekle(tiklanan);
+                if (dur) break;
+
+                if (r.silinen > 0) {
                     D.ardisik = 0;
+                    if (r.kalan.length) logYaz('UYARI', `${r.kalan.length} talep silinmedi, tekrar denenecek`);
                 } else {
                     D.ardisik++;
-                    logYaz('HATA', `silme sonuçlanmadı (${D.ardisik}/${ARDISIK_LIMIT})`);
+                    logYaz('HATA', `hiçbir talep silinmedi (${r.neden}) ${D.ardisik}/${ARDISIK_LIMIT}`);
                     if (D.ardisik >= ARDISIK_LIMIT) { mesaj = 'Sunucu silme isteklerine cevap vermedi, durdu.'; break; }
-                    await bekle(15000);
+                    await bekle(5000);
                 }
                 durumKaydet();
             }
@@ -150,7 +171,7 @@
         confirmKapat();
         calisiyor = false;
         mod = 'bos';
-        logYaz('BİTİŞ', `${mesaj || (dur ? 'Durduruldu.' : 'Bitti.')} | silme isteği: ${D.silinen}`);
+        logYaz('BİTİŞ', `${mesaj || (dur ? 'Durduruldu.' : 'Bitti.')} | silinen: ${D.silinen.length}`);
         ciz();
     }
 
@@ -177,7 +198,7 @@
                 <button id="oSEvet" style="${bs}background:#e5484d;color:#fff;font-weight:600">Evet, sil</button>
                 <button id="oSVaz" style="${bs}background:#2b2f38;color:#e8eaf0;margin-left:6px">Vazgeç</button>`;
         } else {
-            h += `<div style="margin-bottom:10px">Çalışıyor... kalan: <b>${n}</b> | silme isteği: <b>${D.silinen}</b></div>
+            h += `<div style="margin-bottom:10px">Çalışıyor... kalan: <b>${n}</b> | silinen: <b>${D.silinen.length}</b></div>
                 <button id="oSDur" style="${bs}background:#e5484d;color:#fff;font-weight:600">Durdur</button>`;
         }
         if (logSatir.length) {
@@ -190,9 +211,10 @@
         if (q('oSBasla')) q('oSBasla').onclick = () => { mod = 'onay'; ciz(); };
         if (q('oSVaz')) q('oSVaz').onclick = () => { mod = 'bos'; ciz(); };
         if (q('oSEvet')) q('oSEvet').onclick = () => {
-            D = { run: true, silinen: 0, filtre: filtreImza(), ardisik: 0 };
+            D = { run: true, silinen: [], deneme: {}, filtre: filtreImza(), ardisik: 0 };
             durumKaydet();
-            logYaz('BAŞLA', `filtre: ${filtreMetni() || '-'} | mod: ${A.toplu ? 'hızlı' : 'sıralı'} | görünen ${butonlar().length}`);
+            const ls = satirlar();
+            logYaz('BAŞLA', `filtre: ${filtreMetni() || '-'} | mod: ${A.toplu ? 'hızlı' : 'sıralı'} | görünen ${ls.length} | takip: ${ls.length ? ls[0].yontem : '-'}`);
             dongu();
         };
         if (q('oSDur')) q('oSDur').onclick = () => { dur = true; D.run = false; durumKaydet(); };
