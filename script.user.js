@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Stok Koordinasyon Otomasyonu v4.6
+// @name         Stok Koordinasyon Otomasyonu v4.7
 // @namespace    stok-oto
-// @version      4.6
+// @version      4.7
 // @description  Akıllı teklif: miad + miktar + hastane + yurtdışı bütçe kontrolü, sunucu yavaşlığına dayanıklı sayfa geçişi, hata olunca durmadan toparlanma, log paneli
 // @match        *://*/*
 // @grant        none
@@ -12,10 +12,9 @@
     'use strict';
 
     // ============ SABİTLER ============
-    const ADIM_BEKLEME = 800;
+    const BASARI_MAX = 20000;           // "İşlem başarıyla gerçekleşti" mesajı için azami bekleme
     const POPUP_BEKLEME = 10000;        // popup'ın açılması için bekleme (her denemede)
     const POPUP_DENEME = 3;             // popup açılmazsa aynı satır için deneme sayısı
-    const KAYDET_SONRASI = 3500;
     const TEKRAR_BEKLEME = 15000;       // sayfa geçişi başarısız olursa tekrar denemeden önce bekleme
     const SUNUCU_BOS_MAX = 600000;      // sunucudaki isteğin bitmesi için en fazla bekleme (10 dk)
     const ARDISIK_HATA_LIMIT = 4;       // üst üste bu kadar satır hatasında sayfa yenileyip toparlan
@@ -30,6 +29,7 @@
     const SEL_MIKTAR = '#ucTalepciIstekGonder1_ASPxTextBoxTalepMiktari_I';
     const SEL_KAYDET = '#ucTalepciIstekGonder1_ASPxButtonKaydet_I';
     const SEL_KAPAT  = 'img.dxWeb_pcCloseButton_Glass';
+    const SEL_ONAY   = '[id$="ucPopUpConfirm1_popUpControl_PWC0"]';
     const SEL_PAGER  = 'div[id$="ASPxGridViewStokFazlasi_DXPagerBottom"]';
 
     if (window.top !== window.self) return;
@@ -81,13 +81,19 @@
     const xhrBekleyen = () => window.__otoXhrBekleyen || 0;
 
     // ---------- Ayarlar (tarayıcıda hatırlanır) ----------
-    let A = { yuzde: 50, min: 10, max: 50, adim: 5, gun: 180, maxTeklif: 3, maxSayfa: 1, gecisSn: 600, deneme: 5, hastaneTek: true, v46: true };
+    let A = { yuzde: 50, min: 10, max: 50, adim: 5, gun: 180, maxTeklif: 3, maxSayfa: 1, gecisSn: 600, deneme: 5, hastaneTek: true, v46: true, adimMs: 250, v47: true };
     try { Object.assign(A, JSON.parse(localStorage.getItem(AYAR_KEY) || '{}')); } catch (e) {}
     // v4.6'ya geçişte eski kısa bekleme/deneme değerlerini yükselt (bir kereliğine)
     if (!A.v46) {
         A.gecisSn = 600;
         A.deneme = Math.max(5, A.deneme || 5);
         A.v46 = true;
+        try { localStorage.setItem(AYAR_KEY, JSON.stringify(A)); } catch (e) {}
+    }
+
+    if (!A.v47) {
+        A.adimMs = 250;
+        A.v47 = true;
         try { localStorage.setItem(AYAR_KEY, JSON.stringify(A)); } catch (e) {}
     }
 
@@ -188,7 +194,7 @@
             if (durduruldu) return null;
             const v = fn();
             if (v) return v;
-            await bekle(150);
+            await bekle(60);
         }
         return null;
     }
@@ -328,6 +334,24 @@
         return m;
     }
 
+    // "İşlem başarıyla gerçekleşti" uyarı kutusunu bekler (iframe içinde). Kutu çıkar çıkmaz devam edilir.
+    async function basariBekle(uyari0, maxMs) {
+        const bas = Date.now();
+        while (Date.now() - bas < maxMs) {
+            if (durduruldu) return { tur: 'dur', metin: '', ms: 0 };
+            const el = gorunurAra(SEL_ONAY);
+            if (el) {
+                const m = (el.textContent || '').replace(/\s+/g, ' ').trim();
+                if (m) return { tur: /başar/.test(m.toLocaleLowerCase('tr-TR')) ? 'ok' : 'hata', metin: m, ms: Date.now() - bas };
+            }
+            if ((window.__otoAlertSayac || 0) > uyari0) {
+                return { tur: 'hata', metin: 'sayfa uyarısı: ' + String(window.__otoSonAlert || ''), ms: Date.now() - bas };
+            }
+            await bekle(60);
+        }
+        return { tur: 'zaman', metin: '', ms: Date.now() - bas };
+    }
+
     // ---------- Tek satır: 'teklif' | 'atla' | 'hata' | 'dur' ----------
     async function satirIsle(satir, k) {
         const satirId = satir.id;
@@ -389,7 +413,7 @@
             const btn = s2.querySelector(SEL_ISTEK);
             if (!btn || btn.disabled) { logYaz('HATA', `istek butonu bulunamadı | ${bilgi}`); return 'hata'; }
             s2.scrollIntoView({ block: 'center' });
-            await bekle(400);
+            await bekle(100);
             btn.click();
             kutu = await bekleVeBul(() => gorunurAra(SEL_MIKTAR), POPUP_BEKLEME);
         }
@@ -398,10 +422,10 @@
             durumYaz('Popup açılmadı, satır atlanıyor...');
             return 'hata';
         }
-        await bekle(ADIM_BEKLEME);
+        await bekle(A.adimMs);
 
         miktarYaz(kutu, miktar);
-        await bekle(ADIM_BEKLEME);
+        await bekle(A.adimMs);
 
         const kaydet = gorunurAra(SEL_KAYDET);
         if (!kaydet) {
@@ -411,18 +435,25 @@
         }
         const uyari0 = window.__otoAlertSayac || 0;
         kaydet.click();
+        durumYaz(`Kaydediliyor (${miktar})...`);
+
+        const sonuc = await basariBekle(uyari0, BASARI_MAX);
+        if (sonuc.tur === 'dur') { await popupTemizle(); return 'dur'; }
+        if (sonuc.tur === 'hata') {
+            logYaz('HATA', `sunucu teklifi kabul etmedi: ${sonuc.metin.slice(0, 120)} | ${bilgi}`);
+            await popupTemizle();
+            return atla('sunucu reddetti');
+        }
+        if (sonuc.tur === 'zaman') {
+            logYaz('UYARI', `onay mesajı ${BASARI_MAX / 1000} sn içinde görülmedi, teklif gitti sayıldı | ${bilgi}`);
+        }
 
         if (hastane) D.hastaneler.push(hastane);
         D.teklif++;
         D.ardisikHata = 0;
         D.kurtarma = 0;
         durumKaydet();
-        logYaz('TEKLİF', `miktar ${miktar} | ${bilgi}`);
-        durumYaz(`Kaydediliyor (${miktar})...`);
-        await bekle(KAYDET_SONRASI);
-        if ((window.__otoAlertSayac || 0) > uyari0) {
-            logYaz('UYARI', `kayıt sırasında sunucu uyarısı: ${String(window.__otoSonAlert || '').slice(0, 120)}`);
-        }
+        logYaz('TEKLİF', `miktar ${miktar}${sonuc.tur === 'ok' ? ` | onay ${sonuc.ms} ms` : ''} | ${bilgi}`);
 
         const x = await bekleVeBul(disKapatBul, 8000);
         if (!x) {
@@ -433,7 +464,7 @@
         x.click();
 
         await bekleVeBul(() => !gorunurAra(SEL_MIKTAR), POPUP_BEKLEME);
-        await bekle(ADIM_BEKLEME);
+        await bekle(A.adimMs);
         return 'teklif';
     }
 
@@ -487,7 +518,7 @@
             if (sonuc === 'ok') {
                 await bekleVeBul(() => satirImza() !== imza0, 15000);
                 await bosBekle(120000, 'sayfa sonrası');
-                await bekle(1500);
+                await bekle(500);
                 const sn = Math.round((Date.now() - bas) / 1000);
                 logYaz('SAYFA', `${onceki} -> ${sayfaBilgi().cur} geçildi (${sn} sn)`);
                 D.kurtarma = 0;
@@ -520,7 +551,7 @@
         const s = await gecisBekle(() => sayfaBilgi().cur === hedef, bas, uyari0, 'Hedef sayfa');
         if (s === 'ok') {
             await bosBekle(120000, 'hedef sayfa');
-            await bekle(1500);
+            await bekle(500);
             logYaz('SAYFA', `${hedef}. sayfaya gidildi (${Math.round((Date.now() - bas) / 1000)} sn)`);
             return true;
         }
@@ -654,7 +685,7 @@
         border:2px solid #333;padding:10px;border-radius:8px;font-family:sans-serif;
         font-size:12px;box-shadow:0 2px 10px rgba(0,0,0,.3);width:250px`;
     panel.innerHTML = `
-        <div style="font-weight:bold;margin-bottom:6px;">Stok Otomasyon v4.6</div>
+        <div style="font-weight:bold;margin-bottom:6px;">Stok Otomasyon v4.7</div>
         ${alan('oYuzde', 'Max yüzde (%)', A.yuzde)}
         ${alan('oMin', 'Min teklif', A.min)}
         ${alan('oMax', 'Max teklif', A.max)}
@@ -662,6 +693,7 @@
         ${alan('oGun', 'Miad en az (gün)', A.gun)}
         ${alan('oMaxTeklif', 'Toplam teklif sınırı', A.maxTeklif)}
         ${alan('oMaxSayfa', 'Sayfa sınırı', A.maxSayfa)}
+        ${alan('oAdimMs', 'Adım bekleme (ms)', A.adimMs)}
         ${alan('oGecis', 'Sayfa geçiş azami bekleme (sn)', A.gecisSn)}
         ${alan('oDeneme', 'Sayfa geçiş deneme sayısı', A.deneme)}
         <label style="display:block;margin:4px 0 6px;">
@@ -727,6 +759,7 @@
         A.maxTeklif = al('oMaxTeklif', A.maxTeklif);
         A.maxSayfa = al('oMaxSayfa', A.maxSayfa);
         A.gecisSn = al('oGecis', A.gecisSn);
+        A.adimMs = Math.max(50, Math.round(al('oAdimMs', A.adimMs)));
         A.deneme = Math.max(1, Math.round(al('oDeneme', A.deneme)));
         A.hastaneTek = panel.querySelector('#oHastane').checked;
         try { localStorage.setItem(AYAR_KEY, JSON.stringify(A)); } catch (e) {}
@@ -739,7 +772,7 @@
         // Yeni çalıştırma: eski log silinir
         L = [];
         const t = new Date();
-        logYaz('BAŞLA', `${t.toLocaleDateString('tr-TR')} | yüzde ${A.yuzde}, min ${A.min}, max ${A.max}, adım ${A.adim}, miad ${A.gun} gün, teklif sınırı ${A.maxTeklif}, sayfa sınırı ${A.maxSayfa}, geçiş azami bekleme ${A.gecisSn} sn x ${A.deneme} deneme, aynı hastane engeli ${A.hastaneTek ? 'açık' : 'kapalı'}`);
+        logYaz('BAŞLA', `${t.toLocaleDateString('tr-TR')} | yüzde ${A.yuzde}, min ${A.min}, max ${A.max}, adım ${A.adim}, miad ${A.gun} gün, teklif sınırı ${A.maxTeklif}, sayfa sınırı ${A.maxSayfa}, adım bekleme ${A.adimMs} ms, geçiş azami bekleme ${A.gecisSn} sn x ${A.deneme} deneme, aynı hastane engeli ${A.hastaneTek ? 'açık' : 'kapalı'}`);
         calistir();
     };
     panel.querySelector('#oDur').onclick = () => {
