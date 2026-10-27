@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Stok Koordinasyon Otomasyonu v4.7
+// @name         Stok Koordinasyon Otomasyonu v4.8
 // @namespace    stok-oto
-// @version      4.7
+// @version      4.8
 // @description  Akıllı teklif: miad + miktar + hastane + yurtdışı bütçe kontrolü, sunucu yavaşlığına dayanıklı sayfa geçişi, hata olunca durmadan toparlanma, log paneli
 // @match        *://*/*
 // @grant        none
@@ -81,7 +81,7 @@
     const xhrBekleyen = () => window.__otoXhrBekleyen || 0;
 
     // ---------- Ayarlar (tarayıcıda hatırlanır) ----------
-    let A = { yuzde: 50, min: 10, max: 50, adim: 5, gun: 180, maxTeklif: 3, maxSayfa: 1, gecisSn: 600, deneme: 5, hastaneTek: true, v46: true, adimMs: 250, v47: true };
+    let A = { yuzde: 50, min: 10, max: 50, adim: 5, gun: 180, maxTeklif: 9999, maxSayfa: 9999, gecisSn: 600, deneme: 5, hastaneTek: true, v46: true, adimMs: 250, v47: true, v48: true };
     try { Object.assign(A, JSON.parse(localStorage.getItem(AYAR_KEY) || '{}')); } catch (e) {}
     // v4.6'ya geçişte eski kısa bekleme/deneme değerlerini yükselt (bir kereliğine)
     if (!A.v46) {
@@ -94,6 +94,13 @@
     if (!A.v47) {
         A.adimMs = 250;
         A.v47 = true;
+        try { localStorage.setItem(AYAR_KEY, JSON.stringify(A)); } catch (e) {}
+    }
+
+    if (!A.v48) {
+        A.maxTeklif = 9999;
+        A.maxSayfa = 9999;
+        A.v48 = true;
         try { localStorage.setItem(AYAR_KEY, JSON.stringify(A)); } catch (e) {}
     }
 
@@ -141,11 +148,12 @@
             for (const s of son) {
                 const d = document.createElement('div');
                 d.textContent = s;
-                d.style.cssText = 'padding:2px 0;border-bottom:1px solid #eee;word-break:break-word;';
-                if (s.includes('| TEKLİF |')) d.style.color = '#0a7a2f';
-                else if (s.includes('| HATA |') || s.includes('| KURTAR |')) d.style.color = '#c00';
-                else if (s.includes('| ATLA |')) d.style.color = '#888';
-                else d.style.color = '#222';
+                d.style.cssText = 'padding:2px 0;border-bottom:1px solid #23262e;word-break:break-word;';
+                if (s.includes('| TEKLİF |')) d.style.color = '#4ade80';
+                else if (s.includes('| HATA |') || s.includes('| KURTAR |')) d.style.color = '#f87171';
+                else if (s.includes('| UYARI |')) d.style.color = '#fbbf24';
+                else if (s.includes('| ATLA |')) d.style.color = '#6b7385';
+                else d.style.color = '#cdd3df';
                 logKutu.appendChild(d);
             }
         });
@@ -673,52 +681,120 @@
     }
 
     // ---------- Arayüz ----------
-    let durumEl;
-    function durumYaz(t) { if (durumEl) durumEl.textContent = t; }
+    let durumEl, miniEl;
+    function durumYaz(t) { if (durumEl) durumEl.textContent = t; if (miniEl) miniEl.textContent = t; }
+
+    const KAPALI_KEY = 'oto_stok_kapali';
+    let kapali = false;
+    try { kapali = localStorage.getItem(KAPALI_KEY) === '1'; } catch (e) {}
+
+    const stil = document.createElement('style');
+    stil.textContent = `
+        #otoPanel,#otoLogPanel{position:fixed;top:10px;z-index:999999;background:#16181d;color:#e8eaf0;border-radius:12px;
+            font:12px/1.4 "Segoe UI",system-ui,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.35);width:272px;max-height:96vh;overflow:auto}
+        #otoPanel{right:10px}
+        #otoPanel *,#otoLogPanel *{box-sizing:border-box}
+        .oto-bas{display:flex;align-items:center;gap:8px;padding:11px 14px;cursor:pointer;user-select:none}
+        .oto-bas b{font-size:13px;font-weight:600;white-space:nowrap}
+        .oto-ok{color:#8e97a8;display:inline-block;width:10px}
+        .oto-mini{flex:1;min-width:0;display:none;text-align:right;color:#8e97a8;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .oto-bos{flex:1}
+        .oto-gov{padding:0 14px 12px}
+        .oto-sat{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+        .oto-in{width:70px;height:24px;border:1px solid #3a3f4b;border-radius:6px;background:#0f1115;color:#e8eaf0;padding:0 6px;font:inherit;text-align:right;outline:none}
+        .oto-in:focus{border-color:#3b5bfd}
+        .oto-btn{height:30px;padding:0 12px;border:0;border-radius:8px;font:inherit;cursor:pointer;background:#2b2f38;color:#e8eaf0}
+        .oto-btn:hover{background:#363b46}
+        .oto-p{background:#3b5bfd;color:#fff;font-weight:600}
+        .oto-p:hover{background:#2f49d1}
+        .oto-r{background:#e5484d;color:#fff;font-weight:600}
+        .oto-r:hover{background:#cf3a3f}
+        .oto-k{height:24px;padding:0 8px}
+        .oto-deep{background:#1d2027;border-radius:8px;padding:8px;margin:6px 0 4px;display:none}
+        .oto-chk{display:flex;gap:6px;align-items:center;margin:8px 0 10px;cursor:pointer}
+        .oto-chk input{accent-color:#3b5bfd}
+        .oto-btns{display:flex;gap:6px;flex-wrap:wrap}
+        .oto-durum{margin-top:10px;color:#8e97a8}
+        .oto-dur2{display:none}
+        #otoPanel.oto-kapali .oto-gov,#otoPanel.oto-kapali .oto-ayarbtn{display:none}
+        #otoPanel.oto-kapali .oto-mini{display:block}
+        #otoPanel.oto-kapali .oto-bos{display:none}
+        #otoPanel.oto-kapali .oto-dur2{display:inline-block}
+        #otoLogPanel{display:none;padding:12px 14px}
+        #oLogKutu{height:230px;overflow-y:auto;font-family:Consolas,monospace;font-size:11px;background:#0f1115;border:1px solid #2b2f38;border-radius:8px;padding:6px;margin:8px 0}
+    `;
+    document.head.appendChild(stil);
 
     const alan = (id, etiket, deger) =>
-        `<div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-            <span>${etiket}</span><input id="${id}" type="number" value="${deger}" style="width:60px"></div>`;
+        `<div class="oto-sat"><span>${etiket}</span><input id="${id}" class="oto-in" type="number" value="${deger}"></div>`;
 
     const panel = document.createElement('div');
-    panel.style.cssText = `position:fixed;top:10px;right:10px;z-index:999999;background:#fff;
-        border:2px solid #333;padding:10px;border-radius:8px;font-family:sans-serif;
-        font-size:12px;box-shadow:0 2px 10px rgba(0,0,0,.3);width:250px`;
+    panel.id = 'otoPanel';
+    if (kapali) panel.classList.add('oto-kapali');
     panel.innerHTML = `
-        <div style="font-weight:bold;margin-bottom:6px;">Stok Otomasyon v4.7</div>
-        ${alan('oYuzde', 'Max yüzde (%)', A.yuzde)}
-        ${alan('oMin', 'Min teklif', A.min)}
-        ${alan('oMax', 'Max teklif', A.max)}
-        ${alan('oAdim', 'Yuvarlama adımı', A.adim)}
-        ${alan('oGun', 'Miad en az (gün)', A.gun)}
-        ${alan('oMaxTeklif', 'Toplam teklif sınırı', A.maxTeklif)}
-        ${alan('oMaxSayfa', 'Sayfa sınırı', A.maxSayfa)}
-        ${alan('oAdimMs', 'Adım bekleme (ms)', A.adimMs)}
-        ${alan('oGecis', 'Sayfa geçiş azami bekleme (sn)', A.gecisSn)}
-        ${alan('oDeneme', 'Sayfa geçiş deneme sayısı', A.deneme)}
-        <label style="display:block;margin:4px 0 6px;">
-            <input id="oHastane" type="checkbox" ${A.hastaneTek ? 'checked' : ''}> Aynı hastaneye tekrar atma</label>
-        <button id="oBasla" type="button" style="padding:4px 6px;">Başlat</button>
-        <button id="oDur" type="button" style="padding:4px 6px;">Durdur</button>
-        <button id="oSifir" type="button" style="padding:4px 6px;">Sıfırla</button>
-        <button id="oLog" type="button" style="padding:4px 6px;">Log</button>
-        <div id="oDurum" style="margin-top:6px;color:#666;"></div>`;
+        <div class="oto-bas" id="oBaslik" title="Stok Otomasyon v4.8 - küçült / büyüt">
+            <span class="oto-ok" id="oOk">${kapali ? '▸' : '▾'}</span><b>Stok Otomasyon</b>
+            <span class="oto-bos"></span>
+            <span class="oto-mini" id="oMini"></span>
+            <button id="oDur2" class="oto-btn oto-r oto-k oto-dur2" type="button">Durdur</button>
+            <button id="oAyarBtn" class="oto-btn oto-k oto-ayarbtn" type="button">Ayarlar ▾</button>
+        </div>
+        <div class="oto-gov">
+            ${alan('oYuzde', 'Max yüzde (%)', A.yuzde)}
+            ${alan('oMin', 'Min teklif', A.min)}
+            ${alan('oMax', 'Max teklif', A.max)}
+            ${alan('oAdim', 'Yuvarlama adımı', A.adim)}
+            ${alan('oGun', 'Miad en az (gün)', A.gun)}
+            <div class="oto-deep" id="oDeep">
+                ${alan('oMaxTeklif', 'Toplam teklif sınırı', A.maxTeklif)}
+                ${alan('oMaxSayfa', 'Sayfa sınırı', A.maxSayfa)}
+                ${alan('oAdimMs', 'Adım bekleme (ms)', A.adimMs)}
+                ${alan('oGecis', 'Sayfa geçiş azami bekleme (sn)', A.gecisSn)}
+                ${alan('oDeneme', 'Sayfa geçiş deneme sayısı', A.deneme)}
+            </div>
+            <label class="oto-chk"><input id="oHastane" type="checkbox" ${A.hastaneTek ? 'checked' : ''}> Aynı hastaneye tekrar atma</label>
+            <div class="oto-btns">
+                <button id="oBasla" class="oto-btn oto-p" type="button">Başlat</button>
+                <button id="oDur" class="oto-btn oto-r" type="button">Durdur</button>
+                <button id="oSifir" class="oto-btn" type="button">Sıfırla</button>
+                <button id="oLog" class="oto-btn" type="button">Log</button>
+            </div>
+            <div id="oDurum" class="oto-durum"></div>
+        </div>`;
     document.body.appendChild(panel);
     durumEl = panel.querySelector('#oDurum');
+    miniEl = panel.querySelector('#oMini');
     durumYaz(D.hastaneler.length ? `Hazır. Teklif atılan hastane: ${D.hastaneler.length}` : 'Hazır.');
+
+    // Başlık çubuğuna tıklayınca küçül / büyüt
+    panel.querySelector('#oBaslik').onclick = () => {
+        kapali = !kapali;
+        panel.classList.toggle('oto-kapali', kapali);
+        panel.querySelector('#oOk').textContent = kapali ? '▸' : '▾';
+        try { localStorage.setItem(KAPALI_KEY, kapali ? '1' : '0'); } catch (e) {}
+    };
+    // Gelişmiş ayarlar (toplam teklif, sayfa sınırı, bekleme süreleri) aç / kapat
+    panel.querySelector('#oAyarBtn').onclick = (e) => {
+        e.stopPropagation();
+        const d = panel.querySelector('#oDeep');
+        const ac = d.style.display !== 'block';
+        d.style.display = ac ? 'block' : 'none';
+        e.target.textContent = ac ? 'Ayarlar ▴' : 'Ayarlar ▾';
+    };
+    // Küçültülmüşken Durdur (asıl Durdur düğmesini tetikler)
+    panel.querySelector('#oDur2').onclick = (e) => { e.stopPropagation(); panel.querySelector('#oDur').click(); };
 
     // Log paneli (ana panelin solunda)
     const logPanel = document.createElement('div');
-    logPanel.style.cssText = `position:fixed;top:10px;z-index:999999;background:#fff;display:none;
-        border:2px solid #333;padding:10px;border-radius:8px;font-family:sans-serif;
-        font-size:12px;box-shadow:0 2px 10px rgba(0,0,0,.3);width:250px`;
+    logPanel.id = 'otoLogPanel';
     logPanel.innerHTML = `
-        <div style="font-weight:bold;margin-bottom:6px;">Log (son ${LOG_GOSTER})</div>
-        <div id="oLogKutu" style="height:230px;overflow-y:auto;font-family:monospace;font-size:11px;
-            border:1px solid #ccc;padding:4px;margin-bottom:6px;"></div>
-        <button id="oLogIndir" type="button" style="padding:4px 6px;">TXT indir</button>
-        <button id="oLogKapat" type="button" style="padding:4px 6px;">Kapat</button>
-        <span id="oLogSay" style="color:#666;margin-left:4px;"></span>`;
+        <div style="font-weight:600;font-size:13px;">Log (son ${LOG_GOSTER})</div>
+        <div id="oLogKutu"></div>
+        <div class="oto-btns" style="align-items:center">
+            <button id="oLogIndir" class="oto-btn" type="button">TXT indir</button>
+            <button id="oLogKapat" class="oto-btn" type="button">Kapat</button>
+            <span id="oLogSay" style="color:#8e97a8"></span>
+        </div>`;
     document.body.appendChild(logPanel);
     logKutu = logPanel.querySelector('#oLogKutu');
 
@@ -772,7 +848,7 @@
         // Yeni çalıştırma: eski log silinir
         L = [];
         const t = new Date();
-        logYaz('BAŞLA', `${t.toLocaleDateString('tr-TR')} | yüzde ${A.yuzde}, min ${A.min}, max ${A.max}, adım ${A.adim}, miad ${A.gun} gün, teklif sınırı ${A.maxTeklif}, sayfa sınırı ${A.maxSayfa}, adım bekleme ${A.adimMs} ms, geçiş azami bekleme ${A.gecisSn} sn x ${A.deneme} deneme, aynı hastane engeli ${A.hastaneTek ? 'açık' : 'kapalı'}`);
+        logYaz('BAŞLA', `v4.8 | ${t.toLocaleDateString('tr-TR')} | yüzde ${A.yuzde}, min ${A.min}, max ${A.max}, adım ${A.adim}, miad ${A.gun} gün, teklif sınırı ${A.maxTeklif}, sayfa sınırı ${A.maxSayfa}, adım bekleme ${A.adimMs} ms, geçiş azami bekleme ${A.gecisSn} sn x ${A.deneme} deneme, aynı hastane engeli ${A.hastaneTek ? 'açık' : 'kapalı'}`);
         calistir();
     };
     panel.querySelector('#oDur').onclick = () => {
