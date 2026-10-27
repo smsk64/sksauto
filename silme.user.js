@@ -1,5 +1,5 @@
-// Teklif silme otomasyonu v3 - MalzemeyeGore.aspx (ASPxGridViewTalepDetay)
-// @version 3.0
+// Teklif silme otomasyonu v3.1 - MalzemeyeGore.aspx (ASPxGridViewTalepDetay)
+// @version 3.1
 // Talep numarasıyla takip: tıklanan her satırın gerçekten silindiği (sayfadan kaybolduğu) doğrulanır,
 // silinmeyenlere tekrar tıklanır. Tıklama hızı, sunucunun gerçek silme hızına göre kendiliğinden ayarlanır.
 (function () {
@@ -36,6 +36,9 @@
     let calisiyor = false;
     let mod = 'bos';           // bos | onay | calisiyor
     let ayarAcik = false;
+    const KAPALI_KEY = 'oto_sil_kapali';
+    let kapali = false;
+    try { kapali = localStorage.getItem(KAPALI_KEY) === '1'; } catch (e) {}
     const logSatir = [];
     const bekle = (ms) => new Promise((r) => setTimeout(r, ms));
     const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
@@ -259,11 +262,30 @@
         ['ilkSn', 'İlk silinme bekleme (sn)'],
         ['sakinSn', 'Sakin bekleme (sn)']
     ];
+    function baslikBagla() {
+        const b = panel.querySelector('#oSBaslik');
+        if (b) b.onclick = () => {
+            kapali = !kapali;
+            try { localStorage.setItem(KAPALI_KEY, kapali ? '1' : '0'); } catch (e) {}
+            ciz();
+        };
+    }
     function ciz() {
         const n = butonlar().length;
-        let h = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-weight:600;font-size:13px">Teklif silme</span>
-            ${mod === 'bos' ? `<button id="oSAyar" style="${bs}height:24px;padding:0 8px;background:#2b2f38;color:#e8eaf0">${ayarAcik ? 'Ayarlar ▴' : 'Ayarlar ▾'}</button>` : ''}</div>`;
+        const mini = mod === 'calisiyor' ? `kalan ${n} | silinen ${D.silinen.length}` : (mod === 'onay' ? 'onay bekliyor' : `ekranda ${n}`);
+        let h = `<div id="oSBaslik" title="Küçült / büyüt" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:${kapali ? 0 : 8}px;cursor:pointer;user-select:none">
+            <span style="font-weight:600;font-size:13px;white-space:nowrap"><span style="color:#8e97a8;display:inline-block;width:12px">${kapali ? '▸' : '▾'}</span> Teklif silme</span>
+            ${kapali
+                ? `<span style="flex:1;min-width:0;text-align:right;color:#8e97a8;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${mini}</span>` +
+                  (mod === 'calisiyor' ? `<button id="oSDur2" style="${bs}height:24px;padding:0 8px;background:#e5484d;color:#fff;font-weight:600">Durdur</button>` : '')
+                : (mod === 'bos' ? `<button id="oSAyar" style="${bs}height:24px;padding:0 8px;background:#2b2f38;color:#e8eaf0">${ayarAcik ? 'Ayarlar ▴' : 'Ayarlar ▾'}</button>` : '')}</div>`;
+        if (kapali) {
+            panel.innerHTML = h;
+            baslikBagla();
+            const d2 = panel.querySelector('#oSDur2');
+            if (d2) d2.onclick = (e) => { e.stopPropagation(); dur = true; D.run = false; durumKaydet(); };
+            return;
+        }
         if (mod === 'bos') {
             h += `<div style="color:#aab0bd;margin-bottom:8px">Ekranda silinebilir teklif: <b style="color:#fff">${n}</b><br>Silmeden önce üstten filtreyi seç (ör. Giden talepler).</div>`;
             if (ayarAcik) {
@@ -293,7 +315,8 @@
         }
         panel.innerHTML = h;
         const q = (id) => panel.querySelector('#' + id);
-        if (q('oSAyar')) q('oSAyar').onclick = () => { ayarAcik = !ayarAcik; ciz(); };
+        baslikBagla();
+        if (q('oSAyar')) q('oSAyar').onclick = (e) => { e.stopPropagation(); ayarAcik = !ayarAcik; ciz(); };
         if (q('oSTop')) q('oSTop').onchange = (e) => { A.toplu = e.target.checked; ayarKaydet(); };
         if (q('oSOto')) q('oSOto').onchange = (e) => { A.oto = e.target.checked; ayarKaydet(); };
         panel.querySelectorAll('input[data-k]').forEach((i) => {
