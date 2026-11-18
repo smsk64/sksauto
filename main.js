@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, safeStorage, clipboard, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, safeStorage, clipboard, powerSaveBlocker, Menu, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -25,7 +25,8 @@ const SILME = path.join(BASE, 'veri', 'silme.user.js');
 const DEBUG_FILE = path.join(BASE, 'veri', 'debug.log');
 const TAB_PRELOAD = path.join(__dirname, 'preload-tab.js');
 const TOOLBAR_H = 84;
-let win, editWin, dbgWin, setWin, cfg;
+let win, editWin, dbgWin, setWin, cfg, takip;
+let bulSayac = 0;
 const views = {};
 
 // ---------------- Debug kayıt sistemi ----------------
@@ -164,16 +165,10 @@ const VARSAYILAN_CFG = () => ({
   nextId: 5, active: 1,
   tabs: [1, 2, 3, 4].map((n) => ({ id: n, name: String(n), url: '', zoom: 1 })),
   giris: { user: '', pass: '', auto: false },
-  ayar: { url: '', baslangic: false, yeniSekme: false }
+  ayar: { url: '', baslangic: false, yeniSekme: false, takipBaslangic: true }
 });
 function cfgOku(f) { return JSON.parse(fs.readFileSync(f, 'utf8')); }
-function cfgYukle() {
-  let c = null;
-  if (fs.existsSync(CFG)) {
-    try { c = cfgOku(CFG); } catch (e) {
-      try { c = cfgOku(CFG + '.bak'); dlog(null, 'UYARI', 'ayar.json okunamadı, yedekten yüklendi'); } catch (e2) {}
-    }
-  }
+function cfgDuzenle(c) {
   if (!c || !Array.isArray(c.tabs)) c = VARSAYILAN_CFG();
   // Eski sürümden geçiş: sekme bazlı kullanıcı/parola -> tek ortak giriş bilgisi
   if (!c.giris) {
@@ -182,9 +177,18 @@ function cfgYukle() {
   }
   c.tabs.forEach((t) => { delete t.user; delete t.pass; delete t.auto; });
   c.giris = Object.assign({ user: '', pass: '', auto: false }, c.giris);
-  c.ayar = Object.assign({ url: '', baslangic: false, yeniSekme: false }, c.ayar || {});
+  c.ayar = Object.assign({ url: '', baslangic: false, yeniSekme: false, takipBaslangic: true }, c.ayar || {});
   if (!c.nextId) c.nextId = Math.max(0, ...c.tabs.map((t) => t.id)) + 1;
   return c;
+}
+function cfgYukle() {
+  let c = null;
+  if (fs.existsSync(CFG)) {
+    try { c = cfgOku(CFG); } catch (e) {
+      try { c = cfgOku(CFG + '.bak'); dlog(null, 'UYARI', 'ayar.json okunamadı, yedekten yüklendi'); } catch (e2) {}
+    }
+  }
+  return cfgDuzenle(c);
 }
 let sonKayitHata = '';
 function cfgKaydet() {
@@ -212,7 +216,8 @@ function push() {
     active: cfg.active,
     tabs: cfg.tabs.map((t) => ({ id: t.id, name: t.name, url: t.url, zoom: t.zoom || 1 })),
     giris: { user: cfg.giris.user, hasPass: !!cfg.giris.pass, auto: !!cfg.giris.auto },
-    ayar: cfg.ayar
+    ayar: cfg.ayar,
+    bul: bulSayac
   });
 }
 
@@ -413,6 +418,46 @@ const POPUP_AYAR = {
   webPreferences: { backgroundThrottling: false, spellcheck: false, contextIsolation: false, preload: TAB_PRELOAD }
 };
 
+function viewKaldir(id) {
+  const v = views[id];
+  if (!v) return;
+  try { win.contentView.removeChildView(v); } catch (e) {}
+  try { v.webContents.close(); } catch (e) {}
+  delete views[id];
+}
+
+// Stok ve silme scriptlerini sayfaya enjekte eder (zorla: bayrağı sıfırlayıp yeniden enjekte)
+function scriptEnjekte(wc, tab, zorla) {
+  const L = (tur, msg) => dlog(tab.id, tur, msg);
+  const isler = [];
+  const kod = scriptOku('stok');
+  if (kod) {
+    const on = zorla ? 'window.__oto=0;if(!window.__oto){window.__oto=1;\n' : 'if(!window.__oto){window.__oto=1;\n' + HASTANE_ONKOD;
+    isler.push(wc.executeJavaScript(on + kod + '\n}').catch((err) => L('HATA', 'script enjeksiyon hatası: ' + (err && err.message))));
+  }
+  if (!zorla) {
+    ['stok', 'silme'].forEach((h) => {
+      if (fs.existsSync(dosyaYolu(h)) && surumOku(scriptOku(h)) !== surumOku(gomuluKod(h))) {
+        L('UYARI', h + ' scripti: kayıtlı sürüm (' + (surumOku(scriptOku(h)) || '?') + ') gömülü sürümden (' + (surumOku(gomuluKod(h)) || '?') + ') farklı, kayıtlı olan kullanılıyor');
+      }
+    });
+  }
+  const kod2 = silmeOku();
+  if (kod2 && !zorla) {
+    isler.push(wc.executeJavaScript('if(!window.__otoSil){window.__otoSil=1;\n' + kod2 + '\n}')
+      .catch((err) => L('HATA', 'silme script enjeksiyon hatası: ' + (err && err.message))));
+  }
+  return Promise.all(isler);
+}
+
+function cfgDegistir(yeni) {
+  Object.keys(views).forEach((id) => viewKaldir(id));
+  cfg = cfgDuzenle(yeni);
+  if (!tabBul(cfg.active)) cfg.active = cfg.tabs[0] ? cfg.tabs[0].id : 0;
+  cfg.tabs.forEach(viewOlustur);
+  cfgKaydet(); layout(); push();
+}
+
 function viewOlustur(tab) {
   const view = new WebContentsView({
     webPreferences: {
@@ -461,7 +506,10 @@ function viewOlustur(tab) {
   wc.on('did-frame-navigate', (e, url, kod, metin, anaMi) => {
     L('GEZİN', (anaMi ? 'ana ' : 'iframe ') + kod + ' ' + kisalt(url));
   });
-  wc.on('render-process-gone', (e, d) => L('ÇÖKME', JSON.stringify(d)));
+  wc.on('render-process-gone', (e, d) => {
+    L('ÇÖKME', JSON.stringify(d));
+    try { takip.cokme(tab); } catch (err) {}
+  });
   wc.on('unresponsive', () => L('DONMA', 'sayfa yanıt vermiyor'));
   wc.on('responsive', () => L('DONMA', 'sayfa tekrar yanıt veriyor'));
   wc.on('console-message', (a, b, c) => {
@@ -470,29 +518,18 @@ function viewOlustur(tab) {
     else { seviye = b; msg = c; }
     if (typeof seviye === 'string') seviye = { error: 3, warning: 2, info: 1 }[seviye] || 0;
     msg = String(msg || '');
+    if (msg.indexOf('[OtoKomut]') === 0) {
+      try { takip.komut(tab, msg.slice(10)); } catch (err) { L('HATA', 'komut işlenemedi: ' + (err && err.message)); }
+      return;
+    }
     if (msg.indexOf('[Oto]') === 0) L('SCRIPT', kisalt(msg, 300));
     else if (seviye >= 3) L('JS-HATA', kisalt(msg, 300));
   });
 
   wc.on('did-finish-load', () => {
     wc.setZoomFactor(tab.zoom || 1);
-    const kod = scriptOku('stok');
-    if (kod) {
-      wc.executeJavaScript(
-        'if(!window.__oto){window.__oto=1;\n' + HASTANE_ONKOD + kod + '\n}'
-      ).catch((err) => L('HATA', 'script enjeksiyon hatası: ' + (err && err.message)));
-    }
-    ['stok', 'silme'].forEach((h) => {
-      if (fs.existsSync(dosyaYolu(h)) && surumOku(scriptOku(h)) !== surumOku(gomuluKod(h))) {
-        L('UYARI', h + ' scripti: kayıtlı sürüm (' + (surumOku(scriptOku(h)) || '?') + ') gömülü sürümden (' + (surumOku(gomuluKod(h)) || '?') + ') farklı, kayıtlı olan kullanılıyor');
-      }
-    });
-    const kod2 = silmeOku();
-    if (kod2) {
-      wc.executeJavaScript(
-        'if(!window.__otoSil){window.__otoSil=1;\n' + kod2 + '\n}'
-      ).catch((err) => L('HATA', 'silme script enjeksiyon hatası: ' + (err && err.message)));
-    }
+    try { takip.sayfaYuklendi(tab, wc).catch((err) => L('HATA', 'takip: ' + (err && err.message))); } catch (err) {}
+    scriptEnjekte(wc, tab, false);
     const l = loginDene(tab.id, false);
     if (l) l.catch(() => {});
   });
@@ -507,8 +544,65 @@ function viewOlustur(tab) {
   wc.on('did-navigate-in-page', urlGuncelle);
 
   wc.on('zoom-changed', (e, yon) => zoomAyar(tab.id, (tab.zoom || 1) + (yon === 'in' ? 0.1 : -0.1)));
+  // Tarayıcı işlevleri: sağ tık menüsü (kopyala/yapıştır...), sayfada ara, tıklayınca odak
+  let sonTabLog = 0, sonOdakLog = 0;
+  wc.on('context-menu', (e, p) => {
+    const f = p.editFlags || {};
+    const sablon = [];
+    if (p.linkURL) sablon.push({ label: 'Bağlantı adresini kopyala', click: () => clipboard.writeText(p.linkURL) }, { type: 'separator' });
+    if (p.isEditable) {
+      sablon.push(
+        { label: 'Geri al', enabled: !!f.canUndo, click: () => wc.undo() },
+        { label: 'Yinele', enabled: !!f.canRedo, click: () => wc.redo() },
+        { type: 'separator' },
+        { label: 'Kes', enabled: !!f.canCut, click: () => wc.cut() },
+        { label: 'Kopyala', enabled: !!f.canCopy, click: () => wc.copy() },
+        { label: 'Yapıştır', enabled: !!f.canPaste, click: () => wc.paste() },
+        { label: 'Tümünü seç', click: () => wc.selectAll() }
+      );
+    } else {
+      if (p.selectionText) sablon.push({ label: 'Kopyala', click: () => wc.copy() });
+      sablon.push({ label: 'Tümünü seç', click: () => wc.selectAll() });
+    }
+    let geri = false, ileri = false;
+    try {
+      geri = wc.navigationHistory ? wc.navigationHistory.canGoBack() : wc.canGoBack();
+      ileri = wc.navigationHistory ? wc.navigationHistory.canGoForward() : wc.canGoForward();
+    } catch (err) {}
+    sablon.push(
+      { type: 'separator' },
+      { label: 'Geri', enabled: geri, click: () => { try { wc.navigationHistory ? wc.navigationHistory.goBack() : wc.goBack(); } catch (err) {} } },
+      { label: 'İleri', enabled: ileri, click: () => { try { wc.navigationHistory ? wc.navigationHistory.goForward() : wc.goForward(); } catch (err) {} } },
+      { label: 'Yenile', click: () => wc.reload() },
+      { label: 'Sayfada ara (Ctrl+F)', click: () => { bulSayac++; push(); } },
+      { type: 'separator' },
+      { label: 'Öğeyi denetle', click: () => wc.inspectElement(p.x, p.y) }
+    );
+    Menu.buildFromTemplate(sablon).popup({ window: win });
+  });
+  wc.on('input-event', (e, ie) => {
+    if (!ie || ie.type !== 'mouseDown') return;
+    try {
+      if (!wc.isFocused()) {
+        wc.focus();
+        const t = Date.now();
+        if (t - sonOdakLog > 20000) { sonOdakLog = t; L('ODAK', 'tıklamada sayfa odağı alındı'); }
+      }
+    } catch (err) {}
+  });
+  wc.on('found-in-page', (e, r) => { try { win.webContents.send('durum-bul', r.matches); } catch (err) {} });
   wc.on('before-input-event', (e, i) => {
     if (i.type !== 'keyDown') return;
+    if (i.key === 'Tab') {
+      const t = Date.now();
+      if (t - sonTabLog > 20000) {
+        sonTabLog = t;
+        let f = '?';
+        try { f = wc.isFocused(); } catch (err) {}
+        L('TUŞ', 'Tab tuşu sayfaya ulaştı (odak=' + f + ')');
+      }
+    }
+    if (i.control && !i.alt && String(i.key).toLowerCase() === 'f') { bulSayac++; push(); e.preventDefault(); return; }
     if (i.key === 'F5') { wc.reload(); e.preventDefault(); return; }
     if (i.key === 'F12') {
       if (wc.isDevToolsOpened()) wc.closeDevTools(); else wc.openDevTools({ mode: 'detach' });
@@ -567,7 +661,14 @@ function pencereAc() {
   cfg.tabs.forEach(viewOlustur);
   if (!tabBul(cfg.active)) cfg.active = cfg.tabs[0] ? cfg.tabs[0].id : 0;
   win.on('resize', layout);
-  win.webContents.on('did-finish-load', () => { layout(); push(); });
+  let takipAcildi = false;
+  win.webContents.on('did-finish-load', () => {
+    layout(); push();
+    if (!takipAcildi) {
+      takipAcildi = true;
+      if (cfg.ayar.takipBaslangic) setTimeout(() => { try { takip.pencereAc(); } catch (err) {} }, 500);
+    }
+  });
   dlog(null, 'UYGULAMA', 'başladı, sekme sayısı ' + cfg.tabs.length);
 }
 
@@ -583,6 +684,7 @@ ipcMain.on('ekle', () => {
   cfg.active = id; cfgKaydet(); layout(); push();
 });
 ipcMain.on('kapat', (e, id) => {
+  try { takip.sekmeKapandi(id); } catch (err) {}
   const v = views[id];
   if (v) { win.contentView.removeChildView(v); v.webContents.close(); delete views[id]; }
   cfg.tabs = cfg.tabs.filter((t) => t.id !== id);
@@ -660,6 +762,7 @@ ipcMain.handle('ayar:oku', () => ({
   url: cfg.ayar.url,
   baslangic: !!cfg.ayar.baslangic,
   yeniSekme: !!cfg.ayar.yeniSekme,
+  takipBaslangic: !!cfg.ayar.takipBaslangic,
   veri: path.dirname(CFG)
 }));
 ipcMain.handle('ayar:kaydet', (e, o) => {
@@ -671,6 +774,7 @@ ipcMain.handle('ayar:kaydet', (e, o) => {
   cfg.ayar.url = normURL(o.url);
   cfg.ayar.baslangic = !!o.baslangic;
   cfg.ayar.yeniSekme = !!o.yeniSekme;
+  cfg.ayar.takipBaslangic = !!o.takipBaslangic;
   try { if (fs.existsSync(CFG)) fs.copyFileSync(CFG, CFG + '.bak'); } catch (err) {}
   const ok = cfgKaydet();
   let dogru = false;
@@ -719,6 +823,28 @@ ipcMain.handle('script:varsayilan', (e, h) => {
   return { kod: scriptOku(h) };
 });
 ipcMain.handle('pano', () => clipboard.readText());
+
+// Sayfada ara (Ctrl+F)
+ipcMain.on('bul', (e, id, metin, ileri, yeni) => {
+  const v = views[id];
+  if (!v) return;
+  const wc = v.webContents;
+  if (!metin) { try { wc.stopFindInPage('clearSelection'); } catch (err) {} return; }
+  try { wc.findInPage(metin, { forward: ileri !== false, findNext: !yeni }); } catch (err) {}
+});
+ipcMain.on('bul-kapat', (e, id) => {
+  const v = views[id];
+  if (v) { try { v.webContents.stopFindInPage('clearSelection'); } catch (err) {} }
+});
+
+// Takip ekranı
+takip = require('./takip.js')({
+  app, dialog, BrowserWindow, ipcMain, shell, fs, path, BASE,
+  getWin: () => win, getCfg: () => cfg, views,
+  tabBul, viewOlustur, viewKaldir, layout, push, cfgKaydet, cfgDegistir,
+  dlog, kisalt, sifrele, coz, scriptOku, dosyaYolu, scriptEnjekte, loginDene,
+  rapor: () => rapor(), xlsxOlustur: require('./xlsx.js').xlsxOlustur
+});
 
 app.whenReady().then(() => {
   powerSaveBlocker.start('prevent-app-suspension');
