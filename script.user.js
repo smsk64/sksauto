@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Stok Koordinasyon Otomasyonu v4.8
+// @name         Stok Koordinasyon Otomasyonu v4.9
 // @namespace    stok-oto
-// @version      4.8
+// @version      4.9
 // @description  Akıllı teklif: miad + miktar + hastane + yurtdışı bütçe kontrolü, sunucu yavaşlığına dayanıklı sayfa geçişi, hata olunca durmadan toparlanma, log paneli
 // @match        *://*/*
 // @grant        none
@@ -105,7 +105,7 @@
     }
 
     // ---------- Durum (sayfa yenilense de kaybolmaz) ----------
-    const D0 = () => ({ run: false, sayfa: null, done: [], hastaneler: [], teklif: 0, atlanan: 0, sayfaSayac: 0, nedenler: {}, hedef: null, ardisikHata: 0, kurtarma: 0 });
+    const D0 = () => ({ run: false, sayfa: null, done: [], hastaneler: [], teklif: 0, atlanan: 0, sayfaSayac: 0, nedenler: {}, hedef: null, ardisikHata: 0, kurtarma: 0, sonTeklifSayfa: 0, toplamSayfa: 0 });
     let D = D0();
     try {
         const s = JSON.parse(sessionStorage.getItem(DURUM_KEY) || 'null');
@@ -113,6 +113,8 @@
     } catch (e) {}
     if (!D.nedenler) D.nedenler = {};
     const durumKaydet = () => { try { sessionStorage.setItem(DURUM_KEY, JSON.stringify(D)); } catch (e) {} };
+    // Uygulamaya (ana süreç) bilgi gönderir: takip ekranı ve masaüstü hata logu bunu kullanır
+    const komut = (o) => { try { console.log('[OtoKomut] ' + JSON.stringify(o)); } catch (e) {} };
 
     // ---------- Log (sadece son çalıştırma tutulur) ----------
     let L = [];
@@ -458,9 +460,11 @@
 
         if (hastane) D.hastaneler.push(hastane);
         D.teklif++;
+        D.sonTeklifSayfa = D.sayfa || 0;
         D.ardisikHata = 0;
         D.kurtarma = 0;
         durumKaydet();
+        komut({ tip: 'teklif', hastane: hastane || '', teklif: D.teklif, sayfa: D.sayfa, toplam: D.toplamSayfa, sonTeklifSayfa: D.sonTeklifSayfa });
         logYaz('TEKLİF', `miktar ${miktar}${sonuc.tur === 'ok' ? ` | onay ${sonuc.ms} ms` : ''} | ${bilgi}`);
 
         const x = await bekleVeBul(disKapatBul, 8000);
@@ -567,6 +571,24 @@
         return false;
     }
 
+    // ---------- Son durum raporu ve hata bildirimi ----------
+    function sonDurumLog() {
+        const toplam = D.toplamSayfa || sayfaBilgi().toplam || '?';
+        const son = D.sonTeklifSayfa
+            ? `SON TEKLİF ATILAN SAYFA: ${D.sonTeklifSayfa} / ${toplam}`
+            : 'henüz hiç teklif atılmadı';
+        logYaz('SON-DURUM', `${son} | şu an ${D.sayfa || '?'}. sayfada | toplam teklif ${D.teklif}, atlanan ${D.atlanan}`);
+    }
+    function hataBildir(tip, neden, ekstra) {
+        try { localStorage.setItem(LOG_KEY, JSON.stringify(L)); } catch (e) {}
+        komut(Object.assign({
+            tip, neden,
+            sayfa: D.sayfa, toplam: D.toplamSayfa || sayfaBilgi().toplam || 0,
+            sonTeklifSayfa: D.sonTeklifSayfa, teklif: D.teklif, atlanan: D.atlanan,
+            log: L.slice(-400)
+        }, ekstra || {}));
+    }
+
     // ---------- Toparlanma: sayfayı yenile, kaldığı sayfaya dön, devam et ----------
     async function kurtar(neden) {
         D.kurtarma = (D.kurtarma || 0) + 1;
@@ -575,6 +597,8 @@
         D.run = true;
         durumKaydet();
         logYaz('KURTAR', `${neden} | ${KURTAR_BEKLEME / 1000} sn sonra sayfa yenilenecek (${D.kurtarma}/${KURTARMA_MAX}), hedef sayfa ${D.hedef}`);
+        sonDurumLog();
+        hataBildir('hata', neden, { kurtarma: D.kurtarma });
         const bas = Date.now();
         while (Date.now() - bas < KURTAR_BEKLEME) {
             if (durduruldu) return false;
@@ -621,7 +645,9 @@
                 }
                 const pb = sayfaBilgi();
                 if (D.sayfa !== pb.cur) { D.sayfa = pb.cur; D.done = []; durumKaydet(); }
-                logYaz('SAYFA', `${D.sayfa}. sayfa işleniyor`);
+                if (pb.toplam) D.toplamSayfa = pb.toplam;
+                logYaz('SAYFA', `${D.sayfa}. sayfa işleniyor${D.toplamSayfa ? ' (' + D.sayfa + '/' + D.toplamSayfa + ')' : ''}`);
+                komut({ tip: 'ilerleme', sayfa: D.sayfa, toplam: D.toplamSayfa, teklif: D.teklif, atlanan: D.atlanan, sonTeklifSayfa: D.sonTeklifSayfa });
 
                 const k = kolonlar();
                 let satir;
@@ -678,6 +704,14 @@
         logYaz('BİTİŞ', `${bitisMesaji} | Teklif ${D.teklif}, Atlanan ${D.atlanan}`);
         logYaz('ÖZET', `Atlama nedenleri -> ${nedenler}`);
         if (bitisMesaji) durumYaz(`${bitisMesaji} Teklif: ${D.teklif}, Atlanan: ${D.atlanan}`);
+
+        // Takip ekranına / masaüstü hata loguna bildir
+        const TAMAM = ['Teklif limiti doldu.', 'Sayfa limiti doldu.', 'Son sayfaya gelindi.'];
+        const tamam = TAMAM.includes(bitisMesaji) || (bitisMesaji === 'Sonraki sayfa butonu bulunamadı.' && !(sayfaBilgi().toplam > 1));
+        const kullanici = bitisMesaji === 'Durduruldu.';
+        const hata = !tamam && !kullanici;
+        if (hata) sonDurumLog();
+        hataBildir('bitti', bitisMesaji, { tamam, kullanici, hata });
     }
 
     // ---------- Arayüz ----------
@@ -732,7 +766,7 @@
     panel.id = 'otoPanel';
     if (kapali) panel.classList.add('oto-kapali');
     panel.innerHTML = `
-        <div class="oto-bas" id="oBaslik" title="Stok Otomasyon v4.8 - küçült / büyüt">
+        <div class="oto-bas" id="oBaslik" title="Stok Otomasyon v4.9 - küçült / büyüt">
             <span class="oto-ok" id="oOk">${kapali ? '▸' : '▾'}</span><b>Stok Otomasyon</b>
             <span class="oto-bos"></span>
             <span class="oto-mini" id="oMini"></span>
@@ -821,7 +855,7 @@
         return v > 0 ? v : varsayilan;
     };
 
-    panel.querySelector('#oBasla').onclick = () => {
+    function baslat(ozel) {
         // Çalışırken Başlat'a basmak ayarları/sayaçları bozuyordu
         if (calisiyor) {
             durumYaz(durduruldu ? 'Önceki tur bitiyor, 1-2 sn sonra tekrar bas.' : 'Zaten çalışıyor. Önce Durdur.');
@@ -842,15 +876,22 @@
 
         const pb = sayfaBilgi();
         D.sayfa = pb.cur; D.done = []; D.teklif = 0; D.atlanan = 0; D.sayfaSayac = 1; D.nedenler = {};
-        D.hedef = null; D.ardisikHata = 0; D.kurtarma = 0;
+        D.hedef = null; D.ardisikHata = 0; D.kurtarma = 0; D.sonTeklifSayfa = 0; D.toplamSayfa = pb.toplam || 0;
+        if (ozel) {
+            if (ozel.hedef > 1) D.hedef = ozel.hedef;
+            if (Array.isArray(ozel.hastaneler)) D.hastaneler = ozel.hastaneler.slice();
+            if (ozel.teklifOnce > 0) D.teklif = ozel.teklifOnce;
+            if (ozel.sonTeklifSayfa > 0) D.sonTeklifSayfa = ozel.sonTeklifSayfa;
+        }
         durumKaydet();
 
         // Yeni çalıştırma: eski log silinir
         L = [];
         const t = new Date();
-        logYaz('BAŞLA', `v4.8 | ${t.toLocaleDateString('tr-TR')} | yüzde ${A.yuzde}, min ${A.min}, max ${A.max}, adım ${A.adim}, miad ${A.gun} gün, teklif sınırı ${A.maxTeklif}, sayfa sınırı ${A.maxSayfa}, adım bekleme ${A.adimMs} ms, geçiş azami bekleme ${A.gecisSn} sn x ${A.deneme} deneme, aynı hastane engeli ${A.hastaneTek ? 'açık' : 'kapalı'}`);
+        logYaz('BAŞLA', `v4.9 | ${t.toLocaleDateString('tr-TR')} | yüzde ${A.yuzde}, min ${A.min}, max ${A.max}, adım ${A.adim}, miad ${A.gun} gün, teklif sınırı ${A.maxTeklif}, sayfa sınırı ${A.maxSayfa}, adım bekleme ${A.adimMs} ms, geçiş azami bekleme ${A.gecisSn} sn x ${A.deneme} deneme, aynı hastane engeli ${A.hastaneTek ? 'açık' : 'kapalı'}`);
         calistir();
-    };
+    }
+    panel.querySelector('#oBasla').onclick = () => baslat();
     panel.querySelector('#oDur').onclick = () => {
         durduruldu = true; D.run = false; D.hedef = null; durumKaydet(); durumYaz('Durduruldu.');
     };
@@ -859,6 +900,29 @@
         durumKaydet(); durumYaz('Sıfırlandı (hastane listesi dahil).');
         logYaz('SIFIRLA', 'hastane listesi ve sayaçlar sıfırlandı');
     };
+
+    // ---------- Takip ekranından gelen görev (ayarları doldur, hedef sayfaya git, başlat) ----------
+    const GOREV_KEY = 'oto_gorev';
+    function gorevKontrol() {
+        let g = null;
+        try { g = JSON.parse(sessionStorage.getItem(GOREV_KEY) || 'null'); } catch (e) {}
+        if (!g || !g.baslat || calisiyor || D.run) return;
+        if (!sonrakiSatir() && !document.querySelector(SEL_SATIR)) return;   // sonuçlar henüz gelmedi
+        const ay = g.ay || {};
+        const harita = { yuzde: 'oYuzde', min: 'oMin', max: 'oMax', adim: 'oAdim', gun: 'oGun', maxTeklif: 'oMaxTeklif', maxSayfa: 'oMaxSayfa', adimMs: 'oAdimMs', gecisSn: 'oGecis', deneme: 'oDeneme' };
+        for (const k in harita) {
+            const el = panel.querySelector('#' + harita[k]);
+            if (el && ay[k] > 0) el.value = ay[k];
+        }
+        if (typeof ay.hastaneTek === 'boolean') panel.querySelector('#oHastane').checked = ay.hastaneTek;
+        g.baslat = false; g.basladi = true;
+        try { sessionStorage.setItem(GOREV_KEY, JSON.stringify(g)); } catch (e) {}
+        const t0 = Date.now();
+        logYaz('GÖREV', `takip ekranından başlatıldı: ${g.ad || '-'} | hedef sayfa ${g.hedef || 1}`);
+        baslat({ hedef: g.hedef, hastaneler: g.hastaneler, teklifOnce: g.teklifOnce, sonTeklifSayfa: g.sonTeklifSayfa });
+    }
+    window.__otoGorevKontrol = gorevKontrol;
+    setTimeout(gorevKontrol, 1500);
 
     window.addEventListener('pagehide', () => { try { localStorage.setItem(LOG_KEY, JSON.stringify(L)); } catch (e) {} });
 
