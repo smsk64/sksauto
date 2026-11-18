@@ -66,6 +66,10 @@
   <label class="tik"><input id="yeni" type="checkbox">
     <span><b>Yeni sekmede aç</b><small>+ ile eklenen sekme bu adresi açar.</small></span></label>
 
+  <h2>Başlangıç</h2>
+  <label class="tik"><input id="tbas" type="checkbox">
+    <span><b>Açılışta Takip ekranını da aç</b><small>Uygulama açılınca Takip penceresi ilk olarak karşına gelir.</small></span></label>
+
   <div class="yol" id="yol"></div>
 </main>
 <footer>
@@ -86,6 +90,7 @@ async function yukle() {
   $('url').value = r.url || '';
   $('bas').checked = r.baslangic;
   $('yeni').checked = r.yeniSekme;
+  $('tbas').checked = r.takipBaslangic;
   hasPass = r.hasPass;
   $('pw').placeholder = r.hasPass ? '●●●●●●●● kayıtlı' : 'parola';
   $('pwsil').style.display = r.hasPass ? 'inline' : 'none';
@@ -96,7 +101,7 @@ async function yukle() {
 function topla(ekstra) {
   return Object.assign({
     user: $('us').value, pass: $('pw').value, auto: $('oto').checked,
-    url: $('url').value, baslangic: $('bas').checked, yeniSekme: $('yeni').checked
+    url: $('url').value, baslangic: $('bas').checked, yeniSekme: $('yeni').checked, takipBaslangic: $('tbas').checked
   }, ekstra || {});
 }
 
