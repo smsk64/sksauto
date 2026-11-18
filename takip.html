@@ -1,0 +1,292 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Takip</title>
+<style>
+  :root{--ink:#1d2330;--mut:#667085;--line:#e4e7ec;--acc:#3b5bfd;--accd:#2f49d1;--bg:#f4f5f7;--red:#e5484d;--grn:#067647}
+  *{box-sizing:border-box}
+  body{margin:0;font:13px/1.35 "Segoe UI",system-ui,sans-serif;color:var(--ink);background:var(--bg);display:flex;flex-direction:column;height:100vh}
+  header{background:#16181d;color:#e8eaf0;padding:12px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header h1{font-size:15px;margin:0 8px 0 0;font-weight:600}
+  .sp{flex:1}
+  button{font:inherit;cursor:pointer}
+  .b{height:30px;padding:0 12px;border:0;border-radius:8px;background:#2b2f38;color:#e8eaf0;white-space:nowrap}
+  .b:hover{background:#363b46}
+  .p{background:var(--acc);color:#fff;font-weight:600}.p:hover{background:var(--accd)}
+  .r{background:var(--red);color:#fff;font-weight:600}.r:hover{background:#cf3a3f}
+  .l{background:#fff;color:var(--ink);border:1px solid #d0d5dd}.l:hover{background:#eef0f4}
+  header label{display:flex;align-items:center;gap:6px;color:#c5cad6;font-size:12px}
+  header input[type=number]{width:46px;height:24px;border:1px solid #3a3f4b;border-radius:6px;background:#0f1115;color:#e8eaf0;padding:0 6px;text-align:right}
+  #durum{padding:6px 18px;font-size:12px;color:var(--mut);min-height:26px}
+  #durum.ok{color:var(--grn)}#durum.hata{color:var(--red)}
+  .kart{margin:0 18px 12px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  #botKart{display:none}
+  .izgara{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 18px}
+  .sat{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .in{height:28px;border:1px solid #d0d5dd;border-radius:7px;padding:0 8px;font:inherit;color:var(--ink);background:#fff;outline:none;min-width:0}
+  .in:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(59,91,253,.15)}
+  .sn{width:64px;text-align:right}
+  .g.n{width:56px;text-align:right}
+  .g.n::placeholder{color:#b0b7c3}
+  .oz{background:#eef2ff!important;border-color:#c7d2fe!important;color:var(--acc)!important}
+  #ekleForm{display:grid;grid-template-columns:1.3fr 1.5fr 1.5fr 90px auto;gap:8px;align-items:center}
+  main{flex:1;overflow:auto;padding:0 18px 18px}
+  table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  th{background:#fafbfc;text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);padding:9px 8px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0}
+  td{padding:6px 8px;border-bottom:1px solid #f0f2f5;vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  td.c{text-align:center;width:54px}
+  td.c input{width:17px;height:17px;accent-color:var(--grn);cursor:pointer}
+  .g{width:100%;border:1px solid transparent;background:transparent;border-radius:6px;height:28px;padding:0 6px;font:inherit;color:var(--ink)}
+  .g:hover{background:#f4f5f7}.g:focus{background:#fff;border-color:var(--acc);outline:none}
+  .ilr{white-space:nowrap;min-width:96px}
+  .ilr b{font-size:14px}.ilr small{display:block;color:var(--mut)}
+  .drm{color:var(--mut);font-size:12px;min-width:200px;max-width:340px}
+  .drm.cal{color:var(--acc)}.drm.hat{color:var(--red)}.drm.tam{color:var(--grn)}
+  .isl{white-space:nowrap;text-align:right}
+  .isl button{margin-left:4px}
+  .ikon{width:28px;padding:0}
+  tr.ayarsatir td{background:#fafbfc;padding:8px 14px}
+  .bos{padding:34px;text-align:center;color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Takip</h1>
+  <button class="b" id="bayarBtn">Bot ayarları ▾</button>
+  <label><input type="checkbox" id="oto"> Hata olunca otomatik yeniden başlat</label>
+  <label>en fazla <input type="number" id="maxY" min="0"> kez</label>
+  <span class="sp"></span>
+  <button class="b" id="excel">Excel'e aktar</button>
+  <button class="b" id="yedek">Yedek al</button>
+  <button class="b" id="yukle">Yedekten yükle</button>
+</header>
+<div id="durum"></div>
+
+<div class="kart" id="botKart">
+  <div style="font-weight:600;margin-bottom:8px">Bot ayarları (tüm kalemler için varsayılan)</div>
+  <div class="izgara" id="botAlan"></div>
+  <div style="color:var(--mut);font-size:12px;margin-top:8px">Arama yapılınca bot bu değerlerle otomatik doldurulup başlatılır. Her kalem için satırdaki Yüzde / Min / Max alanlarına ve ⚙ düğmesine ayrı değer yazabilirsin; boş bırakılan alan bu varsayılanı kullanır.</div>
+</div>
+
+<div class="kart">
+  <div style="font-weight:600;margin-bottom:8px">Yeni kalem</div>
+  <div id="ekleForm">
+    <input class="in" id="nAd" placeholder="Kalem adı (ör. Dopadren)">
+    <input class="in" id="nJen" placeholder="Jenerik adı">
+    <input class="in" id="nTas" placeholder="Taşınır adı">
+    <input class="in" id="nMik" placeholder="Miktar">
+    <button class="b p" id="ekle">Ekle</button>
+  </div>
+</div>
+
+<main>
+  <table>
+    <thead><tr>
+      <th title="Stok koordinasyon taraması yapıldı">Tarama ✓</th><th title="Talepler yapıldı">Talep ✓</th>
+      <th>Kalem adı</th><th>Jenerik adı</th><th>Taşınır adı</th><th>Miktar</th><th title="Bu kalem için max yüzde (boş = varsayılan)">Yüzde</th><th title="Bu kalem için min teklif (boş = varsayılan)">Min</th><th title="Bu kalem için max teklif (boş = varsayılan)">Max</th><th>İlerleme</th><th>Durum</th><th></th>
+    </tr></thead>
+    <tbody id="govde"></tbody>
+  </table>
+  <div class="bos" id="bos" style="display:none">Henüz kalem yok. Yukarıdan ekleyebilirsin.</div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+let S = null, imzaListe = '', acikAyar = {};
+const imzalar = {};
+
+function mesaj(m, t) { $('durum').textContent = m || ''; $('durum').className = t || ''; }
+
+const BOT_ALANLAR = [
+  ['yuzde', 'Max yüzde (%)'], ['min', 'Min teklif'], ['max', 'Max teklif'], ['adim', 'Yuvarlama adımı'], ['gun', 'Miad en az (gün)'],
+  ['maxTeklif', 'Toplam teklif sınırı'], ['maxSayfa', 'Sayfa sınırı'], ['adimMs', 'Adım bekleme (ms)'],
+  ['gecisSn', 'Sayfa geçiş azami bekleme (sn)'], ['deneme', 'Sayfa geçiş deneme sayısı']
+];
+function botCiz() {
+  $('botAlan').innerHTML = BOT_ALANLAR.map(([k, e]) =>
+    `<div class="sat"><span>${e}</span><input class="in sn" type="number" data-b="${k}" value="${esc(S.botAyar[k])}"></div>`).join('') +
+    `<label class="sat" style="justify-content:flex-start;gap:6px;cursor:pointer"><input type="checkbox" id="bHastane" ${S.botAyar.hastaneTek ? 'checked' : ''}> Aynı hastaneye tekrar atma</label>`;
+}
+
+function asamaSinif(k) {
+  if (k.aktif) return 'cal';
+  if (/^Hata|hata/.test(k.durum)) return 'hat';
+  if (/^Tamamlandı|^Tarandı/.test(k.durum)) return 'tam';
+  return '';
+}
+function ilerleme(k) {
+  if (!k.toplamSayfa && !k.sayfa) return '<span style="color:#98a2b3">-</span>';
+  return `<b>${k.sayfa || 0}/${k.toplamSayfa || '?'}</b><small>${k.teklif || 0} teklif${k.sonTeklifSayfa ? ' · son: ' + k.sonTeklifSayfa + '. sayfa' : ''}</small>`;
+}
+function butonlar(k) {
+  const ad = (k.ad || '').trim();
+  let h = '';
+  if (k.aktif) h += `<button class="b r" data-a="durdur">Durdur</button>`;
+  else {
+    h += `<button class="b p" data-a="ara">${esc(ad ? ad + ' Ara' : 'Ara')}</button>`;
+    if (k.sayfa > 1 && !k.talepYapildi) h += `<button class="b l" data-a="devam" title="Kaldığı sayfadan devam et">Devam (${k.sayfa})</button>`;
+  }
+  const ekstra = ['adim', 'gun', 'maxTeklif', 'maxSayfa', 'hastaneTek'].some((n) => (k.ayar || {})[n] !== undefined);
+  h += `<button class="b l ikon${ekstra ? ' oz' : ''}" data-a="ayar" title="Bu kaleme özel diğer bot ayarları (miad, yuvarlama, toplam teklif, sayfa sınırı, aynı hastane)">⚙</button>`;
+  h += `<button class="b l ikon" data-a="sil" title="Kalemi sil">✕</button>`;
+  return h;
+}
+function ayarSatiri(k) {
+  const a = k.ayar || {};
+  const f = (n, e) => `<span class="sat" style="gap:6px"><span>${e}</span><input class="in sn" type="number" data-ka="${n}" value="${esc(a[n] || '')}" placeholder="${esc(S.botAyar[n])}"></span>`;
+  const h = a.hastaneTek === true ? 'e' : a.hastaneTek === false ? 'h' : '';
+  return `<tr class="ayarsatir" data-ayar="${k.id}"><td colspan="12"><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
+    <b>${esc(k.ad || 'Kalem')} için diğer bot ayarları</b>${f('adim', 'Yuvarlama adımı')}${f('gun', 'Miad en az (gün)')}${f('maxTeklif', 'Toplam teklif sınırı')}${f('maxSayfa', 'Sayfa sınırı')}
+    <span class="sat" style="gap:6px"><span>Aynı hastaneye tekrar atma</span>
+      <select class="in" data-kh="1"><option value="" ${h === '' ? 'selected' : ''}>Varsayılan (${S.botAyar.hastaneTek ? 'evet' : 'hayır'})</option><option value="e" ${h === 'e' ? 'selected' : ''}>Evet</option><option value="h" ${h === 'h' ? 'selected' : ''}>Hayır</option></select></span>
+    <span style="color:var(--mut);font-size:12px">Boş bırakılan alan varsayılanı kullanır.</span></div></td></tr>`;
+}
+
+function ciz(zorla) {
+  $('oto').checked = S.otoYeniden;
+  if (document.activeElement !== $('maxY')) $('maxY').value = S.maxYeniden;
+  $('bos').style.display = S.kalemler.length ? 'none' : 'block';
+  const liste = S.kalemler.map((k) => k.id + (acikAyar[k.id] ? 'a' : '')).join(',');
+  if (zorla || liste !== imzaListe) {
+    imzaListe = liste;
+    $('govde').innerHTML = S.kalemler.map((k) => `
+      <tr data-id="${k.id}">
+        <td class="c"><input type="checkbox" data-f="tarandi" ${k.tarandi ? 'checked' : ''}></td>
+        <td class="c"><input type="checkbox" data-f="talepYapildi" ${k.talepYapildi ? 'checked' : ''}></td>
+        <td><input class="g" data-f="ad" value="${esc(k.ad)}" placeholder="Kalem adı"></td>
+        <td><input class="g" data-f="jenerik" value="${esc(k.jenerik)}" placeholder="Jenerik adı"></td>
+        <td><input class="g" data-f="tasinir" value="${esc(k.tasinir)}" placeholder="Taşınır adı"></td>
+        <td style="width:90px"><input class="g" data-f="miktar" value="${esc(k.miktar)}" placeholder="Miktar"></td>
+        ${['yuzde', 'min', 'max'].map((n) => `<td style="width:62px"><input class="g n" type="number" data-ka="${n}" value="${esc((k.ayar || {})[n] || '')}" placeholder="${esc(S.botAyar[n])}"></td>`).join('')}
+        <td class="ilr"></td><td class="drm"></td><td class="isl"></td>
+      </tr>${acikAyar[k.id] ? ayarSatiri(k) : ''}`).join('');
+    Object.keys(imzalar).forEach((x) => delete imzalar[x]);
+  }
+  S.kalemler.forEach((k) => {
+    const tr = document.querySelector(`tr[data-id="${k.id}"]`);
+    if (!tr) return;
+    const imza = [k.aktif, k.sayfa, k.toplamSayfa, k.teklif, k.sonTeklifSayfa, k.durum, k.talepYapildi, k.tarandi, k.ad, JSON.stringify(k.ayar || {})].join('|');
+    if (imzalar[k.id] === imza) return;
+    imzalar[k.id] = imza;
+    tr.querySelector('.ilr').innerHTML = ilerleme(k);
+    const d = tr.querySelector('.drm');
+    d.textContent = k.durum || '';
+    d.title = k.sonHata ? 'Son hata: ' + k.sonHata : '';
+    d.className = 'drm ' + asamaSinif(k);
+    tr.querySelector('.isl').innerHTML = butonlar(k);
+    tr.querySelector('[data-f="tarandi"]').checked = !!k.tarandi;
+    tr.querySelector('[data-f="talepYapildi"]').checked = !!k.talepYapildi;
+    ['ad', 'jenerik', 'tasinir', 'miktar'].forEach((f) => {
+      const el = tr.querySelector(`[data-f="${f}"]`);
+      if (el && document.activeElement !== el && el.value !== (k[f] || '')) el.value = k[f] || '';
+    });
+    ['yuzde', 'min', 'max'].forEach((n) => {
+      const el = tr.querySelector(`[data-ka="${n}"]`);
+      const v = String((k.ayar || {})[n] || '');
+      if (el && document.activeElement !== el && el.value !== v) el.value = v;
+    });
+  });
+}
+
+async function yukleVeri(zorla) {
+  try { S = await api.al('takip:oku'); } catch (e) { return; }
+  if (!$('botAlan').children.length) botCiz();
+  ciz(zorla);
+}
+
+// ---- olaylar ----
+$('govde').addEventListener('change', async (e) => {
+  const t = e.target, tr = t.closest('tr');
+  if (!tr) return;
+  const id = Number(tr.dataset.id || tr.dataset.ayar);
+  const k = S.kalemler.find((x) => x.id === id);
+  if (t.dataset.f) {
+    await api.al('takip:guncelle', id, t.dataset.f, t.type === 'checkbox' ? t.checked : t.value);
+    if (k) k[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
+  } else if (t.dataset.ka || t.dataset.kh) {
+    const o = {};
+    if (t.dataset.kh) o.hastaneTek = t.value; else o[t.dataset.ka] = t.value;
+    await api.al('takip:guncelle', id, 'ayar', o);
+    if (k) {
+      k.ayar = k.ayar || {};
+      if (t.dataset.kh) { if (t.value === 'e') k.ayar.hastaneTek = true; else if (t.value === 'h') k.ayar.hastaneTek = false; else delete k.ayar.hastaneTek; }
+      else if (Number(t.value) > 0) k.ayar[t.dataset.ka] = Math.round(Number(t.value)); else delete k.ayar[t.dataset.ka];
+    }
+    mesaj((k && k.ad ? k.ad + ' için ' : '') + 'ayar kaydedildi.', 'ok');
+  }
+});
+$('govde').addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-a]');
+  if (!b) return;
+  const tr = b.closest('tr');
+  const id = Number(tr.dataset.id);
+  const k = S.kalemler.find((x) => x.id === id);
+  const a = b.dataset.a;
+  if (a === 'ara' || a === 'devam') {
+    if (a === 'ara' && (k.sayfa > 0 || k.teklif > 0) && !confirm('Bu kalemin mevcut ilerlemesi (' + k.sayfa + '/' + (k.toplamSayfa || '?') + '. sayfa, ' + k.teklif + ' teklif) sıfırlanıp baştan aranacak. Devam edilsin mi?')) return;
+    mesaj('Sekme açılıyor...');
+    const r = await api.al('takip:ara', id, a === 'devam');
+    if (!r.ok) mesaj(r.hata, 'hata'); else mesaj('');
+    yukleVeri();
+  } else if (a === 'durdur') {
+    await api.al('takip:durdur', id); yukleVeri();
+  } else if (a === 'sil') {
+    if (!confirm('"' + (k.ad || 'Kalem') + '" silinsin mi?')) return;
+    await api.al('takip:sil', id); yukleVeri(true);
+  } else if (a === 'ayar') {
+    acikAyar[id] = !acikAyar[id];
+    ciz(true);
+  }
+});
+
+$('ekle').onclick = async () => {
+  const ad = $('nAd').value.trim(), jen = $('nJen').value.trim();
+  if (!ad && !jen) { mesaj('Kalem adı veya jenerik adı yaz.', 'hata'); return; }
+  await api.al('takip:ekle', { ad: ad || jen, jenerik: jen, tasinir: $('nTas').value, miktar: $('nMik').value });
+  ['nAd', 'nJen', 'nTas', 'nMik'].forEach((i) => { $(i).value = ''; });
+  mesaj('Kalem eklendi.', 'ok');
+  yukleVeri(true);
+  $('nAd').focus();
+};
+document.querySelectorAll('#ekleForm input').forEach((i) => { i.onkeydown = (e) => { if (e.key === 'Enter') $('ekle').click(); }; });
+
+$('bayarBtn').onclick = () => {
+  const a = $('botKart').style.display !== 'block';
+  $('botKart').style.display = a ? 'block' : 'none';
+  $('bayarBtn').textContent = a ? 'Bot ayarları ▴' : 'Bot ayarları ▾';
+};
+$('botAlan').addEventListener('change', async () => {
+  const o = { hastaneTek: $('bHastane').checked };
+  $('botAlan').querySelectorAll('[data-b]').forEach((i) => { o[i.dataset.b] = i.value; });
+  S.botAyar = await api.al('takip:botayar', o);
+  mesaj('Bot ayarları kaydedildi.', 'ok');
+  ciz(true);
+});
+const genel = () => api.al('takip:genel', { otoYeniden: $('oto').checked, maxYeniden: $('maxY').value });
+$('oto').onchange = genel;
+$('maxY').onchange = genel;
+
+$('excel').onclick = async () => {
+  const r = await api.al('takip:excel');
+  if (r.ok) mesaj('Excel kaydedildi: ' + r.yol, 'ok'); else if (!r.iptal) mesaj('Excel kaydedilemedi: ' + r.hata, 'hata');
+};
+$('yedek').onclick = async () => {
+  const r = await api.al('takip:yedekal');
+  if (r.ok) mesaj('Yedek kaydedildi: ' + r.yol, 'ok'); else if (!r.iptal) mesaj('Yedek alınamadı: ' + r.hata, 'hata');
+};
+$('yukle').onclick = async () => {
+  const r = await api.al('takip:yedekyukle');
+  if (r.ok) {
+    mesaj('Yedek yüklendi.' + (r.parola ? '' : ' Parola yedekte yoktu: Ayarlar (⚙) bölümünden parolayı yeniden gir.'), 'ok');
+    await yukleVeri(true); $('botAlan').innerHTML = ''; botCiz();
+  } else if (!r.iptal) mesaj('Yedek yüklenemedi: ' + r.hata, 'hata');
+};
+
+yukleVeri(true);
+setInterval(() => yukleVeri(false), 2000);
+</script>
+</body>
+</html>
