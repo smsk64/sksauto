@@ -1,6 +1,6 @@
 {
   "name": "stok-oto-pencere",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Stok Oto Pencere",
   "author": "cnbrkc",
   "main": "main.js",
@@ -14,7 +14,7 @@
   "build": {
     "appId": "com.cnbrkc.stokoto",
     "productName": "StokOto",
-    "files": ["main.js", "preload.js", "preload-tab.js", "ui.html", "editor.html", "debug.html", "ayarlar.html", "script.user.js", "silme.user.js"],
+    "files": ["main.js", "preload.js", "preload-tab.js", "ui.html", "editor.html", "debug.html", "ayarlar.html", "script.user.js", "silme.user.js", "takip.js", "takip.html", "xlsx.js"],
     "win": { "target": "portable" },
     "portable": { "artifactName": "StokOto.exe" }
   }
