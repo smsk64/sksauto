@@ -17,6 +17,11 @@
   .x:hover{opacity:1;background:#e5484d;color:#fff}
   #plus{width:30px;height:30px;margin-bottom:1px;border-radius:8px;display:grid;place-items:center;color:#aab0bd;font-size:18px;cursor:pointer}
   #plus:hover{background:#23262e;color:#fff}
+  #bulkutu{margin-left:auto;align-self:center;display:none;align-items:center;gap:4px;padding:0 6px 4px 12px}
+  #bulkutu input{width:190px;height:24px;border:1px solid #3a3f4b;border-radius:6px;background:#0f1115;color:#e8eaf0;padding:0 8px;font:inherit;outline:none}
+  #bulkutu input:focus{border-color:var(--acc)}
+  #bulkutu button{width:24px;height:24px;border:0;border-radius:6px;background:#2b2f38;color:#e8eaf0;cursor:pointer;font-size:12px}
+  #bulkutu button:hover{background:#363b46}
   #gd{margin-left:auto;align-self:center;padding:0 6px 4px 12px;color:#9aa3b2;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%}
 
   .bar{height:46px;background:var(--bar);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:0 10px}
@@ -43,6 +48,12 @@
 <div id="top">
   <div id="tabs"></div>
   <span id="gd"></span>
+  <div id="bulkutu">
+    <input id="bulin" type="text" placeholder="Sayfada ara" spellcheck="false">
+    <button id="bulon" title="Önceki (Shift+Enter)">▲</button>
+    <button id="bulsn" title="Sonraki (Enter)">▼</button>
+    <button id="bulx" title="Kapat (Esc)">✕</button>
+  </div>
 </div>
 <div class="bar">
   <button class="ib" id="yenile" title="Yenile">
@@ -60,6 +71,7 @@
   </div>
   <span class="ayrac"></span>
   <button class="btn pri" id="simdi" title="Kayıtlı bilgilerle giriş yap">Şimdi gir</button>
+  <button class="btn" id="takip" title="Takip ekranı: kalemler, otomatik arama, Excel, yedek">Takip</button>
   <button class="ib" id="ayarlar" title="Ayarlar">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
   </button>
@@ -81,7 +93,43 @@ function durumYaz(m, kalici) {
   if (m && !kalici) gdT = setTimeout(() => { $('gd').textContent = ''; }, 12000);
 }
 
-api.durum((s) => { S = s; ciz(); });
+let sonBul = null, bulYeni = true;
+api.durum((s) => {
+  S = s; ciz();
+  if (s.bul !== undefined) {
+    if (sonBul !== null && s.bul !== sonBul) bulAc();
+    sonBul = s.bul;
+  }
+});
+
+function bulAc() {
+  $('bulkutu').style.display = 'flex';
+  $('gd').style.display = 'none';
+  $('bulin').focus(); $('bulin').select();
+}
+function bulKapat() {
+  $('bulkutu').style.display = 'none';
+  $('gd').style.display = '';
+  const a = aktif();
+  if (a) api.gonder('bul-kapat', a.id);
+}
+function bulAra(ileri) {
+  const a = aktif();
+  if (!a) return;
+  api.gonder('bul', a.id, $('bulin').value, ileri, bulYeni);
+  bulYeni = false;
+}
+$('bulin').oninput = () => { bulYeni = true; bulAra(true); };
+$('bulin').onkeydown = (e) => {
+  if (e.key === 'Enter') bulAra(!e.shiftKey);
+  else if (e.key === 'Escape') bulKapat();
+};
+$('bulon').onclick = () => bulAra(false);
+$('bulsn').onclick = () => bulAra(true);
+$('bulx').onclick = bulKapat;
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'f') { e.preventDefault(); bulAc(); }
+});
 
 function ciz() {
   const t = $('tabs'); t.innerHTML = '';
@@ -129,6 +177,7 @@ $('pc').onclick = () => { const a = aktif(); if (a) api.gonder('zoom1', a.id); }
 $('zhepsi').onclick = () => { const a = aktif(); if (a) api.gonder('zoomhepsi', a.id); };
 
 $('ayarlar').onclick = () => api.gonder('ayarlar');
+$('takip').onclick = () => api.gonder('takip');
 $('editor').onclick = () => api.gonder('editor');
 $('debug').onclick = () => api.gonder('debug');
 
