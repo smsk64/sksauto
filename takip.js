@@ -476,6 +476,23 @@ module.exports = function (ctx) {
     } catch (e) { return { ok: false, hata: e.message }; }
   }
 
+  // Boş şablon (sadece başlık satırı): doldurup "Excel'den içe aktar" ile yüklenir
+  async function sablonIndir() {
+    const r = await dialog.showSaveDialog(pencere && !pencere.isDestroyed() ? pencere : undefined, {
+      title: 'Şablonu kaydet',
+      defaultPath: path.join(app.getPath('desktop'), 'StokTakip-sablon.xlsx'),
+      filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+    });
+    if (r.canceled || !r.filePath) return { ok: false, iptal: true };
+    try {
+      fs.writeFileSync(r.filePath, ctx.xlsxOlustur([
+        { ad: 'Stok İhtiyaç', satirlar: [['KALEM ADI', 'JENERİK ADI', 'TAŞINIR ADI', 'İHTİYAÇ MİKTARI']], genislik: [36, 30, 30, 18] }
+      ]));
+      try { shell.showItemInFolder(r.filePath); } catch (e) {}
+      return { ok: true, yol: r.filePath };
+    } catch (e) { return { ok: false, hata: e.message }; }
+  }
+
   function miktarMetni(v) {
     if (v == null) return '';
     if (typeof v === 'number') return Number.isInteger(v) ? String(v) : String(Math.round(v * 1000) / 1000).replace('.', ',');
@@ -700,6 +717,7 @@ module.exports = function (ctx) {
   });
   ipcMain.handle('takip:excel', () => excelAl());
   ipcMain.handle('takip:excelyukle', () => excelYukle());
+  ipcMain.handle('takip:sablon', () => sablonIndir());
   ipcMain.handle('takip:yedekal', () => yedekAl());
   ipcMain.handle('takip:yedekyukle', () => yedekYukle());
 
