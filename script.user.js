@@ -553,21 +553,72 @@
     }
 
     // ---------- Belirli sayfaya doğrudan git (yenileme sonrası) ----------
-    async function hedefeGit(hedef) {
-        const g = gridNesne();
-        if (!g) { logYaz('HATA', 'grid nesnesi bulunamadı, ilk sayfadan devam edilecek'); return false; }
-        const uyari0 = window.__otoAlertSayac || 0;
-        const bas = Date.now();
-        logYaz('SAYFA', `${hedef}. sayfaya doğrudan gidiliyor`);
-        try { g.GotoPage(hedef - 1); } catch (e) { logYaz('HATA', 'GotoPage hatası: ' + (e && e.message)); return false; }
-        const s = await gecisBekle(() => sayfaBilgi().cur === hedef, bas, uyari0, 'Hedef sayfa');
-        if (s === 'ok') {
-            await bosBekle(120000, 'hedef sayfa');
-            await bekle(500);
-            logYaz('SAYFA', `${hedef}. sayfaya gidildi (${Math.round((Date.now() - bas) / 1000)} sn)`);
+    // ---------- Belirli sayfaya doğrudan git ----------
+    function pagerAdi() {
+        const p = document.querySelector(SEL_PAGER);
+        return p && p.id ? p.id.replace(/_DXPagerBottom$/, '') : null;
+    }
+    // Yöntem 1: sayfa numarası bağlantılarının kullandığı komut (numara ekranda görünmese de çalışır: 36. sayfa = 'PN35')
+    function pagerKomut(hedef) {
+        try {
+            const ad = pagerAdi();
+            if (!ad || !window.ASPx || typeof window.ASPx.GVPagerOnClick !== 'function') return false;
+            window.ASPx.GVPagerOnClick(ad, 'PN' + (hedef - 1));
             return true;
+        } catch (e) { return false; }
+    }
+    // Yöntem 2: grid nesnesinin GotoPage'i
+    function gotoYontemi(hedef) {
+        const g = gridNesne();
+        if (!g) return false;
+        try { g.GotoPage(hedef - 1); return true; } catch (e) { return false; }
+    }
+    // Yöntem 3: ekranda görünen numaralardan hedefe en yakın olana tıkla (adım adım ilerler)
+    function linkTikla(hedef) {
+        const cur = sayfaBilgi().cur || 0;
+        const linkler = [...document.querySelectorAll(SEL_PAGER + ' a.dxp-num')]
+            .map((a) => ({ a, n: parseInt(a.textContent.replace(/\D/g, ''), 10) })).filter((x) => x.n > 0);
+        let aday = linkler.find((x) => x.n === hedef);
+        if (!aday) aday = linkler.filter((x) => x.n > cur && x.n < hedef).sort((x, y) => y.n - x.n)[0];
+        if (!aday) {
+            const sonraki = document.querySelector(SEL_PAGER + ' a[id$="DXPagerBottom_PBN"]');
+            if (sonraki && cur < hedef) { sonraki.click(); return true; }
+            return false;
         }
-        logYaz('HATA', `hedef sayfaya gidilemedi (${s}), ilk sayfadan devam edilecek`);
+        aday.a.click();
+        return true;
+    }
+    async function hedefeGit(hedef) {
+        const toplam = sayfaBilgi().toplam;
+        if (toplam && hedef > toplam) hedef = toplam;
+        const yontemler = [['sayfa komutu', pagerKomut], ['GotoPage', gotoYontemi], ['numara bağlantısı', linkTikla]];
+        for (let tur = 0; tur < 30 && !durduruldu; tur++) {
+            const onceki = sayfaBilgi().cur;
+            if (onceki === hedef) return true;
+            if (!(await bosBekle(SUNUCU_BOS_MAX, 'sayfa atlama'))) return false;
+            const [ad, fn] = tur < 3 ? yontemler[tur] : yontemler[2];
+            const uyari0 = window.__otoAlertSayac || 0;
+            const bas = Date.now();
+            logYaz('SAYFA', `${hedef}. sayfaya gidiliyor (${ad}, şu an ${onceki || '?'}. sayfa)`);
+            if (!fn(hedef)) { logYaz('UYARI', `${ad} yöntemi kullanılamadı`); continue; }
+            const kosul = () => {
+                const p = sayfaBilgi().cur;
+                return p === hedef || (ad === 'numara bağlantısı' && !!p && p !== onceki);
+            };
+            const s = await gecisBekle(kosul, bas, uyari0, `${hedef}. sayfaya gidiliyor`);
+            if (s === 'dur') return false;
+            if (s === 'ok') {
+                await bosBekle(120000, 'sayfa atlama sonrası');
+                await bekle(500);
+                if (sayfaBilgi().cur === hedef) {
+                    logYaz('SAYFA', `${hedef}. sayfaya gidildi (${Math.round((Date.now() - bas) / 1000)} sn, ${ad})`);
+                    return true;
+                }
+                continue;
+            }
+            logYaz('HATA', `${ad} ile sayfa değişmedi (${s})`);
+        }
+        logYaz('HATA', `${hedef}. sayfaya gidilemedi`);
         return false;
     }
 
@@ -635,7 +686,14 @@
                 D.hedef = null;
                 durumKaydet();
                 const cur = sayfaBilgi().cur;
-                if (cur && cur < hedef) await hedefeGit(hedef);
+                if (cur && cur < hedef) {
+                    const ok = await hedefeGit(hedef);
+                    if (!ok && !durduruldu) {
+                        // Başa dönüp baştan işlem yapma: toparlanma akışı sayfayı yenileyip tekrar o sayfaya gitmeyi dener
+                        D.sayfa = hedef;
+                        await kurtarDene(`${hedef}. sayfaya gidilemedi`);
+                    }
+                }
             }
 
             dis: while (!durduruldu) {
