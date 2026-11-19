@@ -843,7 +843,7 @@ takip = require('./takip.js')({
   getWin: () => win, getCfg: () => cfg, views,
   tabBul, viewOlustur, viewKaldir, layout, push, cfgKaydet, cfgDegistir,
   dlog, kisalt, sifrele, coz, scriptOku, dosyaYolu, scriptEnjekte, loginDene,
-  rapor: () => rapor(), xlsxOlustur: require('./xlsx.js').xlsxOlustur
+  rapor: () => rapor(), xlsxOlustur: require('./xlsx.js').xlsxOlustur, xlsxOku: require('./xlsx.js').xlsxOku
 });
 
 app.whenReady().then(() => {
