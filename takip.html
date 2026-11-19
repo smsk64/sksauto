@@ -59,6 +59,7 @@
   <label>en fazla <input type="number" id="maxY" min="0"> kez</label>
   <span class="sp"></span>
   <button class="b" id="excel" title="Listeyi senin Excel şablonunda kaydeder">Excel'e aktar</button>
+  <button class="b" id="sablon" title="Boş Excel şablonunu indir, doldur, sonra 'Excel\'den içe aktar' ile yükle">Şablonu indir</button>
   <button class="b" id="excelyukle" title="KALEM ADI | JENERİK ADI | TAŞINIR ADI | İHTİYAÇ MİKTARI formatındaki Excel'i içe aktarır">Excel'den içe aktar</button>
   <button class="b" id="yedek" title="Tüm verileri (sekmeler, liste, ilerlemeler, ayarlar) tek dosyaya yedekler">Tam yedek al</button>
   <button class="b" id="yukle" title="Tam yedek dosyasını geri yükler">Yedekten yükle</button>
@@ -273,6 +274,11 @@ $('maxY').onchange = genel;
 $('excel').onclick = async () => {
   const r = await api.al('takip:excel');
   if (r.ok) mesaj('Excel kaydedildi: ' + r.yol, 'ok'); else if (!r.iptal) mesaj('Excel kaydedilemedi: ' + r.hata, 'hata');
+};
+$('sablon').onclick = async () => {
+  const r = await api.al('takip:sablon');
+  if (r.ok) mesaj('Şablon kaydedildi: ' + r.yol + ' - doldurup "Excel\'den içe aktar" ile yükleyebilirsin.', 'ok');
+  else if (!r.iptal) mesaj('Şablon kaydedilemedi: ' + r.hata, 'hata');
 };
 $('excelyukle').onclick = async () => {
   const r = await api.al('takip:excelyukle');
