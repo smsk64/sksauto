@@ -447,9 +447,14 @@ module.exports = function (ctx) {
     const t = str(v).replace(',', '.');
     return t !== '' && /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : str(v);
   }
+  // Excel: 1. sayfa kullanıcının şablonuyla aynı ("Stok İhtiyaç": KALEM ADI | JENERİK ADI | TAŞINIR ADI | İHTİYAÇ MİKTARI),
+  // 2. sayfa ayrıntılı takip durumu. İçe aktarmada sadece 1. sayfa okunur.
+  const N = (v) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
   async function excelAl() {
-    const satirlar = [['No', 'Kalem Adı', 'Jenerik Adı', 'Taşınır Adı', 'Miktar', 'Stok Koordinasyon Tarandı', 'Talep Yapıldı', 'Sayfa', 'Teklif Sayısı', 'Atlanan', 'Son Teklif Sayfası', 'Durum', 'Son Hata', 'Son Güncelleme']];
-    T.kalemler.forEach((k, i) => satirlar.push([
+    const ihtiyac = [['KALEM ADI', 'JENERİK ADI', 'TAŞINIR ADI', 'İHTİYAÇ MİKTARI']];
+    T.kalemler.forEach((k) => ihtiyac.push([k.ad, k.jenerik, k.tasinir, sayiMi(k.miktar)]));
+    const durumSat = [['No', 'Kalem Adı', 'Jenerik Adı', 'Taşınır Adı', 'Miktar', 'Stok Koordinasyon Tarandı', 'Talep Yapıldı', 'Sayfa', 'Teklif Sayısı', 'Atlanan', 'Son Teklif Sayfası', 'Durum', 'Son Hata', 'Son Güncelleme']];
+    T.kalemler.forEach((k, i) => durumSat.push([
       i + 1, k.ad, k.jenerik, k.tasinir, sayiMi(k.miktar), k.tarandi ? '✓' : '', k.talepYapildi ? '✓' : '',
       k.toplamSayfa ? `${k.sayfa}/${k.toplamSayfa}` : '', k.teklif, k.atlanan, k.sonTeklifSayfa || '', k.durum, k.sonHata, k.guncel
     ]));
@@ -457,15 +462,81 @@ module.exports = function (ctx) {
     const p = (n) => String(n).padStart(2, '0');
     const r = await dialog.showSaveDialog(pencere && !pencere.isDestroyed() ? pencere : undefined, {
       title: 'Excel olarak kaydet',
-      defaultPath: path.join(app.getPath('desktop'), `StokOto-Takip-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.xlsx`),
+      defaultPath: path.join(app.getPath('desktop'), `StokTakip-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.xlsx`),
       filters: [{ name: 'Excel', extensions: ['xlsx'] }]
     });
     if (r.canceled || !r.filePath) return { ok: false, iptal: true };
     try {
-      fs.writeFileSync(r.filePath, ctx.xlsxOlustur('Takip', satirlar, [5, 28, 28, 28, 10, 16, 14, 10, 12, 10, 14, 44, 44, 20]));
+      fs.writeFileSync(r.filePath, ctx.xlsxOlustur([
+        { ad: 'Stok İhtiyaç', satirlar: ihtiyac, genislik: [36, 30, 30, 18] },
+        { ad: 'Takip Durumu', satirlar: durumSat, genislik: [5, 28, 28, 28, 10, 16, 14, 10, 12, 10, 14, 44, 44, 20] }
+      ]));
       try { shell.showItemInFolder(r.filePath); } catch (e) {}
       return { ok: true, yol: r.filePath };
     } catch (e) { return { ok: false, hata: e.message }; }
+  }
+
+  function miktarMetni(v) {
+    if (v == null) return '';
+    if (typeof v === 'number') return Number.isInteger(v) ? String(v) : String(Math.round(v * 1000) / 1000).replace('.', ',');
+    return str(v);
+  }
+  async function excelYukle() {
+    const pen = pencere && !pencere.isDestroyed() ? pencere : undefined;
+    const r = await dialog.showOpenDialog(pen, {
+      title: 'Excel dosyasını seç (KALEM ADI | JENERİK ADI | TAŞINIR ADI | İHTİYAÇ MİKTARI)', defaultPath: app.getPath('desktop'),
+      filters: [{ name: 'Excel', extensions: ['xlsx'] }], properties: ['openFile']
+    });
+    if (r.canceled || !r.filePaths.length) return { ok: false, iptal: true };
+    let tablo = null;
+    try { tablo = ctx.xlsxOku(fs.readFileSync(r.filePaths[0])); } catch (e) { return { ok: false, hata: 'Excel okunamadı: ' + e.message }; }
+    const satirlar = tablo.satirlar;
+    let bas = satirlar.findIndex((s) => (s || []).some((c) => N(c) === 'KALEM ADI'));
+    const kol = { ad: 0, jenerik: 1, tasinir: 2, miktar: 3 };
+    if (bas >= 0) {
+      satirlar[bas].forEach((c, i) => {
+        const n = N(c);
+        if (n === 'KALEM ADI') kol.ad = i;
+        else if (n === 'JENERİK ADI') kol.jenerik = i;
+        else if (n === 'TAŞINIR ADI') kol.tasinir = i;
+        else if (n.includes('MİKTAR')) kol.miktar = i;
+      });
+    } else bas = 0;
+    const yeniler = [];
+    satirlar.slice(bas + 1).forEach((s) => {
+      s = s || [];
+      const o = { ad: str(s[kol.ad]), jenerik: str(s[kol.jenerik]), tasinir: str(s[kol.tasinir]), miktar: miktarMetni(s[kol.miktar]) };
+      if (!o.ad && !o.jenerik && !o.tasinir && !o.miktar) return;
+      if (!o.ad) o.ad = o.jenerik;
+      yeniler.push(o);
+    });
+    if (!yeniler.length) return { ok: false, hata: 'Dosyada içe aktarılacak satır bulunamadı (başlıklar: KALEM ADI, JENERİK ADI, TAŞINIR ADI, İHTİYAÇ MİKTARI)' };
+
+    const sec = await dialog.showMessageBox(pen, {
+      type: 'question', title: 'Excel içe aktar', buttons: ['Mevcut listeyle birleştir', 'Listeyi tamamen değiştir', 'Vazgeç'], defaultId: 0, cancelId: 2,
+      message: `${yeniler.length} kalem bulundu (sayfa: ${tablo.sayfa}).`,
+      detail: 'Birleştir: aynı kalem adı varsa jenerik, taşınır adı ve miktarı güncellenir (ilerleme ve tikler korunur), yeni kalemler eklenir.\nDeğiştir: mevcut liste ve ilerlemeleri silinip Excel\'deki liste kurulur.'
+    });
+    if (sec.response === 2) return { ok: false, iptal: true };
+    let eklenen = 0, guncellenen = 0;
+    if (sec.response === 1) {
+      T.kalemler.forEach((k) => { if (k.gorev) k.gorev.asama = 'durduruldu'; });
+      T.kalemler = [];
+    }
+    yeniler.forEach((o) => {
+      const var_ = T.kalemler.find((k) => N(k.ad) === N(o.ad));
+      if (var_) {
+        if (o.jenerik) var_.jenerik = o.jenerik;
+        if (o.tasinir) var_.tasinir = o.tasinir;
+        if (o.miktar !== '') var_.miktar = o.miktar;
+        guncellenen++;
+      } else {
+        T.kalemler.push(Object.assign(yeniKalemTaslak(), { id: ++T.sonId }, o));
+        eklenen++;
+      }
+    });
+    kaydetHemen();
+    return { ok: true, eklenen, guncellenen };
   }
 
   // ---------------- Yedek ----------------
@@ -628,6 +699,7 @@ module.exports = function (ctx) {
     return true;
   });
   ipcMain.handle('takip:excel', () => excelAl());
+  ipcMain.handle('takip:excelyukle', () => excelYukle());
   ipcMain.handle('takip:yedekal', () => yedekAl());
   ipcMain.handle('takip:yedekyukle', () => yedekYukle());
 
