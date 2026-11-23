@@ -26,7 +26,12 @@ module.exports = function (ctx) {
     const v = varsayilan();
     t = Object.assign(v, t || {});
     t.botAyar = Object.assign(varsayilan().botAyar, t.botAyar || {});
-    t.kalemler = (Array.isArray(t.kalemler) ? t.kalemler : []).map((k) => Object.assign(yeniKalemTaslak(), k, { gorev: null }));
+    t.kalemler = (Array.isArray(t.kalemler) ? t.kalemler : []).map((k) => {
+      const o = Object.assign(yeniKalemTaslak(), k, { gorev: null });
+      o.jenerik = str(o.jenerik) || str(o.tasinir);   // jenerik ve taşınır adı tek alan
+      o.tasinir = o.jenerik;
+      return o;
+    });
     t.sonId = Math.max(t.sonId || 0, ...t.kalemler.map((k) => k.id || 0));
     return t;
   }
@@ -132,13 +137,14 @@ module.exports = function (ctx) {
   function yeniGorev(hedef) {
     return { asama: 'form', hedef: Math.max(1, hedef || 1), yonlendirme: 0, formDeneme: 0, baslangic: Date.now() };
   }
-  const sekmeAdi = (k) => str(k.ad) || str(k.jenerik) || 'Kalem ' + k.id;
+  const aranan = (k) => str(k.jenerik) || str(k.tasinir);
+  const sekmeAdi = (k) => str(k.ad) || aranan(k) || 'Kalem ' + k.id;
   function durum(k, m) { k.durum = m; k.guncel = simdiYazi(); kaydet(); }
 
   async function ara(id, devam) {
     const k = kalem(id);
     if (!k) return { ok: false, hata: 'Kalem bulunamadı' };
-    if (!str(k.jenerik)) return { ok: false, hata: 'Önce jenerik adını yaz' };
+    if (!aranan(k)) return { ok: false, hata: 'Önce jenerik / taşınır adını yaz' };
     const cfg = ctx.getCfg();
     const hedef = devam ? Math.max(1, k.sayfa || 1) : 1;
     if (!devam) {
@@ -175,7 +181,7 @@ module.exports = function (ctx) {
     ctx.cfgKaydet(); ctx.layout(); ctx.push();
     const w = ctx.getWin();
     if (w && !w.isDestroyed()) { w.show(); w.focus(); }
-    ctx.dlog(tab.id, 'TAKİP', `"${k.ad}" araması başlatıldı (jenerik: ${k.jenerik}, hedef sayfa ${hedef})`);
+    ctx.dlog(tab.id, 'TAKİP', `"${k.ad}" araması başlatıldı (jenerik: ${aranan(k)}, hedef sayfa ${hedef})`);
     return { ok: true };
   }
 
@@ -235,10 +241,10 @@ module.exports = function (ctx) {
       }
       g.formDeneme++;
       if (g.formDeneme > 10) { hataDurumu(k, 'Form doldurulamadı (10 deneme)'); return; }
-      durum(k, `Form dolduruluyor (il: TÜRKİYE, jenerik: ${k.jenerik})...`);
+      durum(k, `Form dolduruluyor (il: TÜRKİYE, jenerik: ${aranan(k)})...`);
       await bekle(1500);       // DevExpress kontrollerinin hazır olması için
       let s = null;
-      try { s = await wc.executeJavaScript(formKodu(str(k.jenerik), g.baslangic)); }
+      try { s = await wc.executeJavaScript(formKodu(aranan(k), g.baslangic)); }
       catch (e) {
         // Sayfa yeniden yüklenmiş olabilir; yeni yüklemede tekrar denenecek
         ctx.dlog(tab.id, 'TAKİP', 'form betiği kesildi: ' + ctx.kisalt(e && e.message));
@@ -414,7 +420,7 @@ module.exports = function (ctx) {
       const baslik = [
         '=== STOK OTO HATA RAPORU ===',
         k ? `ARANAN KALEM: ${k.ad || '-'}` : `SEKME: ${ad}`,
-        k ? `Jenerik adı: ${k.jenerik || '-'} | Taşınır adı: ${k.tasinir || '-'} | İstenen miktar: ${k.miktar || '-'}` : '',
+        k ? `Jenerik / Taşınır adı: ${aranan(k) || '-'} | İstenen miktar: ${k.miktar || '-'}` : '',
         k ? `Bot ayarları: ${ayarYazi}` : '',
         'Son güncelleme: ' + simdiYazi(),
         '',
@@ -452,10 +458,10 @@ module.exports = function (ctx) {
   const N = (v) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
   async function excelAl() {
     const ihtiyac = [['KALEM ADI', 'JENERİK ADI', 'TAŞINIR ADI', 'İHTİYAÇ MİKTARI']];
-    T.kalemler.forEach((k) => ihtiyac.push([k.ad, k.jenerik, k.tasinir, sayiMi(k.miktar)]));
-    const durumSat = [['No', 'Kalem Adı', 'Jenerik Adı', 'Taşınır Adı', 'Miktar', 'Stok Koordinasyon Tarandı', 'Talep Yapıldı', 'Sayfa', 'Teklif Sayısı', 'Atlanan', 'Son Teklif Sayfası', 'Durum', 'Son Hata', 'Son Güncelleme']];
+    T.kalemler.forEach((k) => ihtiyac.push([k.ad, aranan(k), aranan(k), sayiMi(k.miktar)]));
+    const durumSat = [['No', 'Kalem Adı', 'Jenerik / Taşınır Adı', 'Miktar', 'Stok Koordinasyon Tarandı', 'Talep Yapıldı', 'Sayfa', 'Teklif Sayısı', 'Atlanan', 'Son Teklif Sayfası', 'Durum', 'Son Hata', 'Son Güncelleme']];
     T.kalemler.forEach((k, i) => durumSat.push([
-      i + 1, k.ad, k.jenerik, k.tasinir, sayiMi(k.miktar), k.tarandi ? '✓' : '', k.talepYapildi ? '✓' : '',
+      i + 1, k.ad, aranan(k), sayiMi(k.miktar), k.tarandi ? '✓' : '', k.talepYapildi ? '✓' : '',
       k.toplamSayfa ? `${k.sayfa}/${k.toplamSayfa}` : '', k.teklif, k.atlanan, k.sonTeklifSayfa || '', k.durum, k.sonHata, k.guncel
     ]));
     const d = new Date();
@@ -469,7 +475,7 @@ module.exports = function (ctx) {
     try {
       fs.writeFileSync(r.filePath, ctx.xlsxOlustur([
         { ad: 'Stok İhtiyaç', satirlar: ihtiyac, genislik: [36, 30, 30, 18] },
-        { ad: 'Takip Durumu', satirlar: durumSat, genislik: [5, 28, 28, 28, 10, 16, 14, 10, 12, 10, 14, 44, 44, 20] }
+        { ad: 'Takip Durumu', satirlar: durumSat, genislik: [5, 28, 34, 10, 16, 14, 10, 12, 10, 14, 44, 44, 20] }
       ]));
       try { shell.showItemInFolder(r.filePath); } catch (e) {}
       return { ok: true, yol: r.filePath };
@@ -522,8 +528,9 @@ module.exports = function (ctx) {
     const yeniler = [];
     satirlar.slice(bas + 1).forEach((s) => {
       s = s || [];
-      const o = { ad: str(s[kol.ad]), jenerik: str(s[kol.jenerik]), tasinir: str(s[kol.tasinir]), miktar: miktarMetni(s[kol.miktar]) };
-      if (!o.ad && !o.jenerik && !o.tasinir && !o.miktar) return;
+      const jen = str(s[kol.jenerik]) || str(s[kol.tasinir]);   // JENERİK ADI hücresi hem jenerik hem taşınır adı sayılır
+      const o = { ad: str(s[kol.ad]), jenerik: jen, tasinir: jen, miktar: miktarMetni(s[kol.miktar]) };
+      if (!o.ad && !o.jenerik && !o.miktar) return;
       if (!o.ad) o.ad = o.jenerik;
       yeniler.push(o);
     });
@@ -532,7 +539,7 @@ module.exports = function (ctx) {
     const sec = await dialog.showMessageBox(pen, {
       type: 'question', title: 'Excel içe aktar', buttons: ['Mevcut listeyle birleştir', 'Listeyi tamamen değiştir', 'Vazgeç'], defaultId: 0, cancelId: 2,
       message: `${yeniler.length} kalem bulundu (sayfa: ${tablo.sayfa}).`,
-      detail: 'Birleştir: aynı kalem adı varsa jenerik, taşınır adı ve miktarı güncellenir (ilerleme ve tikler korunur), yeni kalemler eklenir.\nDeğiştir: mevcut liste ve ilerlemeleri silinip Excel\'deki liste kurulur.'
+      detail: 'Birleştir: aynı kalem adı varsa jenerik / taşınır adı ve miktar güncellenir (ilerleme ve tikler korunur), yeni kalemler eklenir.\nDeğiştir: mevcut liste ve ilerlemeleri silinip Excel\'deki liste kurulur.'
     });
     if (sec.response === 2) return { ok: false, iptal: true };
     let eklenen = 0, guncellenen = 0;
@@ -543,8 +550,7 @@ module.exports = function (ctx) {
     yeniler.forEach((o) => {
       const var_ = T.kalemler.find((k) => N(k.ad) === N(o.ad));
       if (var_) {
-        if (o.jenerik) var_.jenerik = o.jenerik;
-        if (o.tasinir) var_.tasinir = o.tasinir;
+        if (o.jenerik) { var_.jenerik = o.jenerik; var_.tasinir = o.jenerik; }
         if (o.miktar !== '') var_.miktar = o.miktar;
         guncellenen++;
       } else {
@@ -646,7 +652,7 @@ module.exports = function (ctx) {
   }));
   ipcMain.handle('takip:ekle', (e, o) => {
     o = o || {};
-    const k = Object.assign(yeniKalemTaslak(), { id: ++T.sonId, ad: str(o.ad), jenerik: str(o.jenerik), tasinir: str(o.tasinir), miktar: str(o.miktar) });
+    const k = Object.assign(yeniKalemTaslak(), { id: ++T.sonId, ad: str(o.ad), jenerik: str(o.jenerik) || str(o.tasinir), tasinir: str(o.jenerik) || str(o.tasinir), miktar: str(o.miktar) });
     T.kalemler.push(k);
     kaydetHemen();
     return k.id;
@@ -656,6 +662,7 @@ module.exports = function (ctx) {
     if (!k) return false;
     if (['ad', 'jenerik', 'tasinir', 'miktar', 'notlar'].includes(alan)) {
       k[alan] = str(deger);
+      if (alan === 'jenerik' || alan === 'tasinir') { k.jenerik = k[alan]; k.tasinir = k[alan]; }
       if (alan === 'ad' && k.sekmeId != null) {
         const t = ctx.tabBul(k.sekmeId);
         if (t && k.ad) { t.name = k.ad; ctx.cfgKaydet(); ctx.push(); }
