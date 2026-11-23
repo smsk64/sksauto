@@ -32,7 +32,12 @@
   .in{height:24px;border:1px solid #d0d5dd;border-radius:6px;padding:0 7px;font:inherit;color:var(--ink);background:#fff;outline:none;min-width:0}
   .in:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(59,91,253,.15)}
   .sn{width:60px;text-align:right}
-  #ekleForm{display:grid;grid-template-columns:1.2fr 2fr 90px auto;gap:6px;align-items:center}
+  .cift{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  #ekleForm{flex:1;min-width:420px;display:grid;grid-template-columns:1.2fr 2fr 90px auto;gap:6px;align-items:center}
+  .arama{display:flex;align-items:center;gap:6px;min-width:260px;flex:0 1 340px}
+  .arama .in{flex:1}
+  #say{color:var(--mut);font-size:11px;white-space:nowrap;min-width:38px;text-align:right}
+  tr.eslesen td{box-shadow:inset 0 0 0 9999px rgba(251,191,36,.12)}
   main{flex:1;overflow:auto;padding:0 12px 12px}
   table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
   th{background:#fafbfc;text-align:left;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:var(--mut);padding:6px 5px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;position:sticky;top:0;z-index:1}
@@ -87,12 +92,17 @@
   <div style="color:var(--mut);font-size:11px;margin-top:6px">Arama yapılınca bot bu değerlerle otomatik doldurulup başlatılır. Her kalem için satırdaki Min / Max alanlarına ve ⚙ düğmesine (yüzde dahil) ayrı değer yazabilirsin; boş bırakılan alan bu varsayılanı kullanır.</div>
 </div>
 
-<div class="kart">
+<div class="kart cift">
   <div id="ekleForm">
     <input class="in" id="nAd" placeholder="Kalem adı (ör. Dopadren)">
     <input class="in" id="nJen" placeholder="Jenerik / Taşınır adı">
     <input class="in" id="nMik" placeholder="Miktar">
     <button class="b p" id="ekle">Ekle</button>
+  </div>
+  <div class="arama">
+    <input class="in" id="ara" type="text" placeholder="Listede ara: kalem, jenerik, miktar, durum (Ctrl+F)" spellcheck="false">
+    <span id="say"></span>
+    <button class="b l" id="araTemiz" title="Aramayı temizle (Esc)">✕</button>
   </div>
 </div>
 
@@ -197,10 +207,39 @@ function ayarSatiri(k) {
 
 function jenerikDeger(k) { return k.jenerik || k.tasinir || ''; }
 
+// ---- arama ----
+const kat = (v) => String(v == null ? '' : v).toLocaleLowerCase('tr-TR').replace(/ı/g, 'i').replace(/ş/g, 's').replace(/ç/g, 'c').replace(/ğ/g, 'g').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/\s+/g, ' ');
+function aramaUygula() {
+  if (!S) return;
+  const q = kat($('ara').value).trim();
+  const parcalar = q ? q.split(' ') : [];
+  let gorunen = 0;
+  S.kalemler.forEach((k) => {
+    const tr = document.querySelector(`tr[data-id="${k.id}"]`);
+    if (!tr) return;
+    const hay = kat([k.ad, jenerikDeger(k), k.miktar, k.durum, k.tarandi ? 'tarandi' : '', k.talepYapildi ? 'talep yapildi' : ''].join(' '));
+    const ok = parcalar.every((p) => hay.includes(p));
+    tr.style.display = ok ? '' : 'none';
+    tr.classList.toggle('eslesen', !!q && ok);
+    const ay = document.querySelector(`tr[data-ayar="${k.id}"]`);
+    if (ay) ay.style.display = ok ? '' : 'none';
+    if (ok) gorunen++;
+  });
+  $('say').textContent = q ? gorunen + '/' + S.kalemler.length : (S.kalemler.length ? S.kalemler.length + ' kalem' : '');
+  $('bos').style.display = S.kalemler.length ? 'none' : 'block';
+  if (S.kalemler.length && !gorunen) { $('bos').textContent = 'Aramaya uyan kalem yok.'; $('bos').style.display = 'block'; }
+  else if (!S.kalemler.length) $('bos').textContent = 'Henüz kalem yok. Yukarıdan ekleyebilirsin.';
+}
+$('ara').oninput = aramaUygula;
+$('araTemiz').onclick = () => { $('ara').value = ''; aramaUygula(); $('ara').focus(); };
+$('ara').onkeydown = (e) => { if (e.key === 'Escape') $('araTemiz').click(); };
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'f') { e.preventDefault(); $('ara').focus(); $('ara').select(); }
+});
+
 function ciz(zorla) {
   $('oto').checked = S.otoYeniden;
   if (document.activeElement !== $('maxY')) $('maxY').value = S.maxYeniden;
-  $('bos').style.display = S.kalemler.length ? 'none' : 'block';
   const liste = S.kalemler.map((k) => k.id + (acikAyar[k.id] ? 'a' : '')).join(',');
   if (zorla || liste !== imzaListe) {
     imzaListe = liste;
@@ -243,6 +282,7 @@ function ciz(zorla) {
       if (el && document.activeElement !== el && el.value !== v) el.value = v;
     });
   });
+  aramaUygula();
 }
 
 async function yukleVeri(zorla) {
@@ -303,8 +343,24 @@ $('govde').addEventListener('click', async (e) => {
 $('ekle').onclick = async () => {
   const ad = $('nAd').value.trim(), jen = $('nJen').value.trim();
   if (!ad && !jen) { mesaj('Kalem adı veya jenerik / taşınır adı yaz.', 'hata'); return; }
-  await api.al('takip:ekle', { ad: ad || jen, jenerik: jen, miktar: $('nMik').value });
+  const o = { ad: ad || jen, jenerik: jen, miktar: $('nMik').value };
+  let r = await api.al('takip:ekle', o, false);
+  if (!r.ok && r.tur === 'ad') {
+    $('ara').value = r.ad; await yukleVeri(true);
+    mesaj('Bu kalem zaten listede: "' + r.ad + '" (aşağıda gösterildi). Mükerrer kayıt eklenmedi.', 'hata');
+    return;
+  }
+  if (!r.ok && r.tur === 'jenerik') {
+    $('ara').value = jen; await yukleVeri(true);
+    if (!confirm('Aynı jenerik / taşınır adıyla kayıtlı bir kalem var: "' + r.ad + '".\n\nYine de yeni kalem olarak eklensin mi?')) {
+      mesaj('Eklenmedi: aynı jenerik adı "' + r.ad + '" kaleminde mevcut.', 'hata');
+      return;
+    }
+    r = await api.al('takip:ekle', o, true);
+  }
+  if (!r.ok) { mesaj('Eklenemedi.', 'hata'); return; }
   ['nAd', 'nJen', 'nMik'].forEach((i) => { $(i).value = ''; });
+  $('ara').value = '';
   mesaj('Kalem eklendi.', 'ok');
   yukleVeri(true);
   $('nAd').focus();
