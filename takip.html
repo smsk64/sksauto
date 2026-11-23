@@ -6,49 +6,63 @@
 <style>
   :root{--ink:#1d2330;--mut:#667085;--line:#e4e7ec;--acc:#3b5bfd;--accd:#2f49d1;--bg:#f4f5f7;--red:#e5484d;--grn:#067647}
   *{box-sizing:border-box}
-  body{margin:0;font:13px/1.35 "Segoe UI",system-ui,sans-serif;color:var(--ink);background:var(--bg);display:flex;flex-direction:column;height:100vh}
-  header{background:#16181d;color:#e8eaf0;padding:12px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  header h1{font-size:15px;margin:0 8px 0 0;font-weight:600}
+  html,body{margin:0}
+  body{font:12px/1.3 "Segoe UI",system-ui,sans-serif;color:var(--ink);background:var(--bg);display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  header{background:#16181d;color:#e8eaf0;padding:8px 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  header h1{font-size:14px;margin:0 6px 0 0;font-weight:600}
   .sp{flex:1}
   button{font:inherit;cursor:pointer}
-  .b{height:30px;padding:0 12px;border:0;border-radius:8px;background:#2b2f38;color:#e8eaf0;white-space:nowrap}
+  .b{height:26px;padding:0 10px;border:0;border-radius:7px;background:#2b2f38;color:#e8eaf0;white-space:nowrap;font-size:12px}
   .b:hover{background:#363b46}
   .p{background:var(--acc);color:#fff;font-weight:600}.p:hover{background:var(--accd)}
   .r{background:var(--red);color:#fff;font-weight:600}.r:hover{background:#cf3a3f}
   .l{background:#fff;color:var(--ink);border:1px solid #d0d5dd}.l:hover{background:#eef0f4}
-  header label{display:flex;align-items:center;gap:6px;color:#c5cad6;font-size:12px}
-  header input[type=number]{width:46px;height:24px;border:1px solid #3a3f4b;border-radius:6px;background:#0f1115;color:#e8eaf0;padding:0 6px;text-align:right}
-  #durum{padding:6px 18px;font-size:12px;color:var(--mut);min-height:26px}
+  header label{display:flex;align-items:center;gap:5px;color:#c5cad6;font-size:11.5px}
+  header input[type=number]{width:40px;height:22px;border:1px solid #3a3f4b;border-radius:6px;background:#0f1115;color:#e8eaf0;padding:0 5px;text-align:right}
+  .zm{display:flex;align-items:center;background:#2b2f38;border-radius:7px;overflow:hidden}
+  .zm button{width:26px;height:26px;border:0;background:transparent;color:#e8eaf0;font-size:14px}
+  .zm button:hover{background:#363b46}
+  .zm span{min-width:42px;text-align:center;font-size:11.5px}
+  #durum{padding:4px 12px;font-size:11.5px;color:var(--mut);min-height:22px}
   #durum.ok{color:var(--grn)}#durum.hata{color:var(--red)}
-  .kart{margin:0 18px 12px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .kart{margin:0 12px 8px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
   #botKart{display:none}
-  .izgara{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 18px}
-  .sat{display:flex;justify-content:space-between;align-items:center;gap:8px}
-  .in{height:28px;border:1px solid #d0d5dd;border-radius:7px;padding:0 8px;font:inherit;color:var(--ink);background:#fff;outline:none;min-width:0}
+  .izgara{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 16px}
+  .sat{display:flex;justify-content:space-between;align-items:center;gap:6px}
+  .in{height:24px;border:1px solid #d0d5dd;border-radius:6px;padding:0 7px;font:inherit;color:var(--ink);background:#fff;outline:none;min-width:0}
   .in:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(59,91,253,.15)}
-  .sn{width:64px;text-align:right}
-  .g.n{width:56px;text-align:right}
-  .g.n::placeholder{color:#b0b7c3}
-  .oz{background:#eef2ff!important;border-color:#c7d2fe!important;color:var(--acc)!important}
-  #ekleForm{display:grid;grid-template-columns:1.3fr 1.5fr 1.5fr 90px auto;gap:8px;align-items:center}
-  main{flex:1;overflow:auto;padding:0 18px 18px}
-  table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  th{background:#fafbfc;text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--mut);padding:9px 8px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0}
-  td{padding:6px 8px;border-bottom:1px solid #f0f2f5;vertical-align:middle}
+  .sn{width:60px;text-align:right}
+  #ekleForm{display:grid;grid-template-columns:1.2fr 2fr 90px auto;gap:6px;align-items:center}
+  main{flex:1;overflow:auto;padding:0 12px 12px}
+  table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th{background:#fafbfc;text-align:left;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:var(--mut);padding:6px 5px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;position:sticky;top:0;z-index:1}
+  th.c{text-align:center}
+  td{padding:3px 5px;border-bottom:1px solid #f0f2f5;vertical-align:middle;overflow:hidden}
   tr:last-child td{border-bottom:0}
-  td.c{text-align:center;width:54px}
-  td.c input{width:17px;height:17px;accent-color:var(--grn);cursor:pointer}
-  .g{width:100%;border:1px solid transparent;background:transparent;border-radius:6px;height:28px;padding:0 6px;font:inherit;color:var(--ink)}
+  td.c{text-align:center}
+  td.c input{width:15px;height:15px;accent-color:var(--grn);cursor:pointer;margin:0}
+  .g{width:100%;border:1px solid transparent;background:transparent;border-radius:5px;font:inherit;color:var(--ink);padding:2px 5px}
+  textarea.g{height:33px;font-size:11.5px;line-height:1.25;resize:none;overflow:hidden;display:block}
+  input.g{height:26px;font-size:12px}
+  input.g.n{text-align:right;padding:2px 4px}
   .g:hover{background:#f4f5f7}.g:focus{background:#fff;border-color:var(--acc);outline:none}
-  .ilr{white-space:nowrap;min-width:96px}
-  .ilr b{font-size:14px}.ilr small{display:block;color:var(--mut)}
-  .drm{color:var(--mut);font-size:12px;min-width:200px;max-width:340px}
+  .g::placeholder{color:#b0b7c3}
+  input[type=number].g{-moz-appearance:textfield}
+  input[type=number].g::-webkit-outer-spin-button,input[type=number].g::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .ilr{white-space:nowrap}
+  .ilr b{font-size:13px;line-height:1.1;display:block}.ilr small{display:block;color:var(--mut);font-size:10px;line-height:1.15}
+  .drm{color:var(--mut);font-size:11px;line-height:1.25}
+  .drm div{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .drm.cal{color:var(--acc)}.drm.hat{color:var(--red)}.drm.tam{color:var(--grn)}
-  .isl{white-space:nowrap;text-align:right}
-  .isl button{margin-left:4px}
-  .ikon{width:28px;padding:0}
-  tr.ayarsatir td{background:#fafbfc;padding:8px 14px}
-  .bos{padding:34px;text-align:center;color:var(--mut)}
+  .act1{white-space:nowrap}
+  .act2{white-space:nowrap;text-align:right}
+  .mini{height:24px;padding:0 7px;font-size:11.5px;border-radius:6px}
+  .ikon{width:24px;padding:0}
+  .act1 .mini+.mini{margin-left:3px}
+  .act2 .mini+.mini{margin-left:3px}
+  .oz{background:#eef2ff!important;border-color:#c7d2fe!important;color:var(--acc)!important}
+  tr.ayarsatir td{background:#fafbfc;padding:6px 10px}
+  .bos{padding:26px;text-align:center;color:var(--mut)}
 </style>
 </head>
 <body>
@@ -59,25 +73,24 @@
   <label>en fazla <input type="number" id="maxY" min="0"> kez</label>
   <span class="sp"></span>
   <button class="b" id="excel" title="Listeyi senin Excel şablonunda kaydeder">Excel'e aktar</button>
-  <button class="b" id="sablon" title="Boş Excel şablonunu indir, doldur, sonra 'Excel\'den içe aktar' ile yükle">Şablonu indir</button>
+  <button class="b" id="sablon" title="Boş Excel şablonunu indir, doldur, sonra 'Excel'den içe aktar' ile yükle">Şablonu indir</button>
   <button class="b" id="excelyukle" title="KALEM ADI | JENERİK ADI | TAŞINIR ADI | İHTİYAÇ MİKTARI formatındaki Excel'i içe aktarır">Excel'den içe aktar</button>
   <button class="b" id="yedek" title="Tüm verileri (sekmeler, liste, ilerlemeler, ayarlar) tek dosyaya yedekler">Tam yedek al</button>
   <button class="b" id="yukle" title="Tam yedek dosyasını geri yükler">Yedekten yükle</button>
+  <div class="zm" title="Ekran boyutu (Ctrl + / Ctrl - / Ctrl 0)"><button id="zk">−</button><span id="zp">100%</span><button id="zb">+</button></div>
 </header>
 <div id="durum"></div>
 
 <div class="kart" id="botKart">
-  <div style="font-weight:600;margin-bottom:8px">Bot ayarları (tüm kalemler için varsayılan)</div>
+  <div style="font-weight:600;margin-bottom:6px">Bot ayarları (tüm kalemler için varsayılan)</div>
   <div class="izgara" id="botAlan"></div>
-  <div style="color:var(--mut);font-size:12px;margin-top:8px">Arama yapılınca bot bu değerlerle otomatik doldurulup başlatılır. Her kalem için satırdaki Yüzde / Min / Max alanlarına ve ⚙ düğmesine ayrı değer yazabilirsin; boş bırakılan alan bu varsayılanı kullanır.</div>
+  <div style="color:var(--mut);font-size:11px;margin-top:6px">Arama yapılınca bot bu değerlerle otomatik doldurulup başlatılır. Her kalem için satırdaki Min / Max alanlarına ve ⚙ düğmesine (yüzde dahil) ayrı değer yazabilirsin; boş bırakılan alan bu varsayılanı kullanır.</div>
 </div>
 
 <div class="kart">
-  <div style="font-weight:600;margin-bottom:8px">Yeni kalem</div>
   <div id="ekleForm">
     <input class="in" id="nAd" placeholder="Kalem adı (ör. Dopadren)">
-    <input class="in" id="nJen" placeholder="Jenerik adı">
-    <input class="in" id="nTas" placeholder="Taşınır adı">
+    <input class="in" id="nJen" placeholder="Jenerik / Taşınır adı">
     <input class="in" id="nMik" placeholder="Miktar">
     <button class="b p" id="ekle">Ekle</button>
   </div>
@@ -85,9 +98,17 @@
 
 <main>
   <table>
+    <colgroup>
+      <col style="width:38px"><col style="width:38px"><col style="width:86px">
+      <col style="width:15%"><col style="width:24%">
+      <col style="width:54px"><col style="width:46px"><col style="width:46px">
+      <col style="width:92px"><col><col style="width:58px">
+    </colgroup>
     <thead><tr>
-      <th title="Stok koordinasyon taraması yapıldı">Tarama ✓</th><th title="Talepler yapıldı">Talep ✓</th>
-      <th>Kalem adı</th><th>Jenerik adı</th><th>Taşınır adı</th><th>Miktar</th><th title="Bu kalem için max yüzde (boş = varsayılan)">Yüzde</th><th title="Bu kalem için min teklif (boş = varsayılan)">Min</th><th title="Bu kalem için max teklif (boş = varsayılan)">Max</th><th>İlerleme</th><th>Durum</th><th></th>
+      <th class="c" title="Stok koordinasyon taraması yapıldı">Tara</th><th class="c" title="Talepler yapıldı">Talep</th><th></th>
+      <th>Kalem adı</th><th>Jenerik / Taşınır adı</th><th>Miktar</th>
+      <th title="Bu kalem için min teklif (boş = varsayılan)">Min</th><th title="Bu kalem için max teklif (boş = varsayılan)">Max</th>
+      <th>İlerleme</th><th>Durum</th><th></th>
     </tr></thead>
     <tbody id="govde"></tbody>
   </table>
@@ -99,8 +120,37 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 let S = null, imzaListe = '', acikAyar = {};
 const imzalar = {};
+const KOLON = 11;
 
 function mesaj(m, t) { $('durum').textContent = m || ''; $('durum').className = t || ''; }
+
+// ---- ekran boyutu ----
+let zoom = 1;
+try { zoom = parseFloat(localStorage.getItem('takip_zoom')) || 1; } catch (e) {}
+function zoomUygula() {
+  zoom = Math.max(0.5, Math.min(1.8, Math.round(zoom * 10) / 10));
+  document.documentElement.style.zoom = zoom;
+  document.body.style.height = (window.innerHeight / zoom) + 'px';
+  $('zp').textContent = Math.round(zoom * 100) + '%';
+  try { localStorage.setItem('takip_zoom', String(zoom)); } catch (e) {}
+}
+$('zk').onclick = () => { zoom -= 0.1; zoomUygula(); };
+$('zb').onclick = () => { zoom += 0.1; zoomUygula(); };
+$('zp').onclick = () => { zoom = 1; zoomUygula(); };
+$('zp').style.cursor = 'pointer';
+window.addEventListener('resize', zoomUygula);
+document.addEventListener('keydown', (e) => {
+  if (!e.ctrlKey || e.altKey) return;
+  if (e.key === '+' || e.key === '=') { e.preventDefault(); zoom += 0.1; zoomUygula(); }
+  else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoom -= 0.1; zoomUygula(); }
+  else if (e.key === '0') { e.preventDefault(); zoom = 1; zoomUygula(); }
+});
+document.addEventListener('wheel', (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  zoom += e.deltaY < 0 ? 0.1 : -0.1; zoomUygula();
+}, { passive: false });
+zoomUygula();
 
 const BOT_ALANLAR = [
   ['yuzde', 'Max yüzde (%)'], ['min', 'Min teklif'], ['max', 'Max teklif'], ['adim', 'Yuvarlama adımı'], ['gun', 'Miad en az (gün)'],
@@ -121,31 +171,31 @@ function asamaSinif(k) {
 }
 function ilerleme(k) {
   if (!k.toplamSayfa && !k.sayfa) return '<span style="color:#98a2b3">-</span>';
-  return `<b>${k.sayfa || 0}/${k.toplamSayfa || '?'}</b><small>${k.teklif || 0} teklif${k.sonTeklifSayfa ? ' · son: ' + k.sonTeklifSayfa + '. sayfa' : ''}</small>`;
+  return `<b>${k.sayfa || 0}/${k.toplamSayfa || '?'}</b><small>${k.teklif || 0} teklif${k.sonTeklifSayfa ? ' · son ' + k.sonTeklifSayfa : ''}</small>`;
 }
-function butonlar(k) {
-  const ad = (k.ad || '').trim();
-  let h = '';
-  if (k.aktif) h += `<button class="b r" data-a="durdur">Durdur</button>`;
-  else {
-    h += `<button class="b p" data-a="ara">${esc(ad ? ad + ' Ara' : 'Ara')}</button>`;
-    if (k.sayfa > 1 && !k.talepYapildi) h += `<button class="b l" data-a="devam" title="Kaldığı sayfadan devam et">Devam (${k.sayfa})</button>`;
-  }
-  const ekstra = ['adim', 'gun', 'maxTeklif', 'maxSayfa', 'hastaneTek'].some((n) => (k.ayar || {})[n] !== undefined);
-  h += `<button class="b l ikon${ekstra ? ' oz' : ''}" data-a="ayar" title="Bu kaleme özel diğer bot ayarları (miad, yuvarlama, toplam teklif, sayfa sınırı, aynı hastane)">⚙</button>`;
-  h += `<button class="b l ikon" data-a="sil" title="Kalemi sil">✕</button>`;
+function butonlar1(k) {
+  if (k.aktif) return `<button class="b r mini" data-a="durdur" title="Çalışan aramayı durdur">Durdur</button>`;
+  let h = `<button class="b p mini" data-a="ara" title="${esc((k.ad || 'Kalem') + ' için aramayı başlat')}">Ara</button>`;
+  if (k.sayfa > 1 && !k.talepYapildi) h += `<button class="b l mini" data-a="devam" title="Kaldığı sayfadan devam et (${k.sayfa}. sayfa)">↪${k.sayfa}</button>`;
   return h;
+}
+function butonlar2(k) {
+  const ekstra = ['yuzde', 'adim', 'gun', 'maxTeklif', 'maxSayfa', 'hastaneTek'].some((n) => (k.ayar || {})[n] !== undefined);
+  return `<button class="b l mini ikon${ekstra ? ' oz' : ''}" data-a="ayar" title="Bu kaleme özel diğer bot ayarları (yüzde, miad, yuvarlama, toplam teklif, sayfa sınırı, aynı hastane)">⚙</button>` +
+    `<button class="b l mini ikon" data-a="sil" title="Kalemi sil">✕</button>`;
 }
 function ayarSatiri(k) {
   const a = k.ayar || {};
-  const f = (n, e) => `<span class="sat" style="gap:6px"><span>${e}</span><input class="in sn" type="number" data-ka="${n}" value="${esc(a[n] || '')}" placeholder="${esc(S.botAyar[n])}"></span>`;
+  const f = (n, e) => `<span class="sat" style="gap:5px"><span>${e}</span><input class="in sn" type="number" data-ka="${n}" value="${esc(a[n] || '')}" placeholder="${esc(S.botAyar[n])}"></span>`;
   const h = a.hastaneTek === true ? 'e' : a.hastaneTek === false ? 'h' : '';
-  return `<tr class="ayarsatir" data-ayar="${k.id}"><td colspan="12"><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
-    <b>${esc(k.ad || 'Kalem')} için diğer bot ayarları</b>${f('adim', 'Yuvarlama adımı')}${f('gun', 'Miad en az (gün)')}${f('maxTeklif', 'Toplam teklif sınırı')}${f('maxSayfa', 'Sayfa sınırı')}
-    <span class="sat" style="gap:6px"><span>Aynı hastaneye tekrar atma</span>
+  return `<tr class="ayarsatir" data-ayar="${k.id}"><td colspan="${KOLON}"><div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+    <b>${esc(k.ad || 'Kalem')} için diğer bot ayarları</b>${f('yuzde', 'Max yüzde (%)')}${f('adim', 'Yuvarlama adımı')}${f('gun', 'Miad en az (gün)')}${f('maxTeklif', 'Toplam teklif sınırı')}${f('maxSayfa', 'Sayfa sınırı')}
+    <span class="sat" style="gap:5px"><span>Aynı hastaneye tekrar atma</span>
       <select class="in" data-kh="1"><option value="" ${h === '' ? 'selected' : ''}>Varsayılan (${S.botAyar.hastaneTek ? 'evet' : 'hayır'})</option><option value="e" ${h === 'e' ? 'selected' : ''}>Evet</option><option value="h" ${h === 'h' ? 'selected' : ''}>Hayır</option></select></span>
-    <span style="color:var(--mut);font-size:12px">Boş bırakılan alan varsayılanı kullanır.</span></div></td></tr>`;
+    <span style="color:var(--mut);font-size:11px">Boş bırakılan alan varsayılanı kullanır.</span></div></td></tr>`;
 }
+
+function jenerikDeger(k) { return k.jenerik || k.tasinir || ''; }
 
 function ciz(zorla) {
   $('oto').checked = S.otoYeniden;
@@ -158,12 +208,12 @@ function ciz(zorla) {
       <tr data-id="${k.id}">
         <td class="c"><input type="checkbox" data-f="tarandi" ${k.tarandi ? 'checked' : ''}></td>
         <td class="c"><input type="checkbox" data-f="talepYapildi" ${k.talepYapildi ? 'checked' : ''}></td>
-        <td><input class="g" data-f="ad" value="${esc(k.ad)}" placeholder="Kalem adı"></td>
-        <td><input class="g" data-f="jenerik" value="${esc(k.jenerik)}" placeholder="Jenerik adı"></td>
-        <td><input class="g" data-f="tasinir" value="${esc(k.tasinir)}" placeholder="Taşınır adı"></td>
-        <td style="width:90px"><input class="g" data-f="miktar" value="${esc(k.miktar)}" placeholder="Miktar"></td>
-        ${['yuzde', 'min', 'max'].map((n) => `<td style="width:62px"><input class="g n" type="number" data-ka="${n}" value="${esc((k.ayar || {})[n] || '')}" placeholder="${esc(S.botAyar[n])}"></td>`).join('')}
-        <td class="ilr"></td><td class="drm"></td><td class="isl"></td>
+        <td class="act1"></td>
+        <td><textarea class="g" rows="2" data-f="ad" placeholder="Kalem adı">${esc(k.ad)}</textarea></td>
+        <td><textarea class="g" rows="2" data-f="jenerik" placeholder="Jenerik / Taşınır adı">${esc(jenerikDeger(k))}</textarea></td>
+        <td><input class="g n" data-f="miktar" value="${esc(k.miktar)}" placeholder="-"></td>
+        ${['min', 'max'].map((n) => `<td><input class="g n" type="number" data-ka="${n}" value="${esc((k.ayar || {})[n] || '')}" placeholder="${esc(S.botAyar[n])}"></td>`).join('')}
+        <td class="ilr"></td><td class="drm"></td><td class="act2"></td>
       </tr>${acikAyar[k.id] ? ayarSatiri(k) : ''}`).join('');
     Object.keys(imzalar).forEach((x) => delete imzalar[x]);
   }
@@ -175,17 +225,19 @@ function ciz(zorla) {
     imzalar[k.id] = imza;
     tr.querySelector('.ilr').innerHTML = ilerleme(k);
     const d = tr.querySelector('.drm');
-    d.textContent = k.durum || '';
-    d.title = k.sonHata ? 'Son hata: ' + k.sonHata : '';
+    d.innerHTML = '<div></div>';
+    d.firstChild.textContent = k.durum || '';
+    d.title = (k.durum || '') + (k.sonHata ? '\nSon hata: ' + k.sonHata : '');
     d.className = 'drm ' + asamaSinif(k);
-    tr.querySelector('.isl').innerHTML = butonlar(k);
+    tr.querySelector('.act1').innerHTML = butonlar1(k);
+    tr.querySelector('.act2').innerHTML = butonlar2(k);
     tr.querySelector('[data-f="tarandi"]').checked = !!k.tarandi;
     tr.querySelector('[data-f="talepYapildi"]').checked = !!k.talepYapildi;
-    ['ad', 'jenerik', 'tasinir', 'miktar'].forEach((f) => {
+    [['ad', k.ad || ''], ['jenerik', jenerikDeger(k)], ['miktar', k.miktar || '']].forEach(([f, v]) => {
       const el = tr.querySelector(`[data-f="${f}"]`);
-      if (el && document.activeElement !== el && el.value !== (k[f] || '')) el.value = k[f] || '';
+      if (el && document.activeElement !== el && el.value !== v) el.value = v;
     });
-    ['yuzde', 'min', 'max'].forEach((n) => {
+    ['min', 'max'].forEach((n) => {
       const el = tr.querySelector(`[data-ka="${n}"]`);
       const v = String((k.ayar || {})[n] || '');
       if (el && document.activeElement !== el && el.value !== v) el.value = v;
@@ -200,14 +252,18 @@ async function yukleVeri(zorla) {
 }
 
 // ---- olaylar ----
+$('govde').addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'TEXTAREA' && e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+});
 $('govde').addEventListener('change', async (e) => {
   const t = e.target, tr = t.closest('tr');
   if (!tr) return;
   const id = Number(tr.dataset.id || tr.dataset.ayar);
   const k = S.kalemler.find((x) => x.id === id);
   if (t.dataset.f) {
-    await api.al('takip:guncelle', id, t.dataset.f, t.type === 'checkbox' ? t.checked : t.value);
-    if (k) k[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value;
+    const deger = t.type === 'checkbox' ? t.checked : t.value;
+    await api.al('takip:guncelle', id, t.dataset.f, deger);
+    if (k) { k[t.dataset.f] = deger; if (t.dataset.f === 'jenerik') k.tasinir = deger; }
   } else if (t.dataset.ka || t.dataset.kh) {
     const o = {};
     if (t.dataset.kh) o.hastaneTek = t.value; else o[t.dataset.ka] = t.value;
@@ -228,7 +284,7 @@ $('govde').addEventListener('click', async (e) => {
   const k = S.kalemler.find((x) => x.id === id);
   const a = b.dataset.a;
   if (a === 'ara' || a === 'devam') {
-    if (a === 'ara' && (k.sayfa > 0 || k.teklif > 0) && !confirm('Bu kalemin mevcut ilerlemesi (' + k.sayfa + '/' + (k.toplamSayfa || '?') + '. sayfa, ' + k.teklif + ' teklif) sıfırlanıp baştan aranacak. Devam edilsin mi?')) return;
+    if (a === 'ara' && (k.sayfa > 0 || k.teklif > 0) && !confirm('Bu kalemin mevcut ilerlemesi (' + k.sayfa + '/' + (k.toplamSayfa || '?') + '. sayfa, ' + k.teklif + ' teklif) sıfırlanıp baştan aranacak. Devam edilsin mi?\n\n(Kaldığı sayfadan devam etmek için ↪ düğmesini kullan.)')) return;
     mesaj('Sekme açılıyor...');
     const r = await api.al('takip:ara', id, a === 'devam');
     if (!r.ok) mesaj(r.hata, 'hata'); else mesaj('');
@@ -246,9 +302,9 @@ $('govde').addEventListener('click', async (e) => {
 
 $('ekle').onclick = async () => {
   const ad = $('nAd').value.trim(), jen = $('nJen').value.trim();
-  if (!ad && !jen) { mesaj('Kalem adı veya jenerik adı yaz.', 'hata'); return; }
-  await api.al('takip:ekle', { ad: ad || jen, jenerik: jen, tasinir: $('nTas').value, miktar: $('nMik').value });
-  ['nAd', 'nJen', 'nTas', 'nMik'].forEach((i) => { $(i).value = ''; });
+  if (!ad && !jen) { mesaj('Kalem adı veya jenerik / taşınır adı yaz.', 'hata'); return; }
+  await api.al('takip:ekle', { ad: ad || jen, jenerik: jen, miktar: $('nMik').value });
+  ['nAd', 'nJen', 'nMik'].forEach((i) => { $(i).value = ''; });
   mesaj('Kalem eklendi.', 'ok');
   yukleVeri(true);
   $('nAd').focus();
