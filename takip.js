@@ -650,12 +650,23 @@ module.exports = function (ctx) {
     kalemler: T.kalemler.map((k) => Object.assign({}, k, { gorev: null, aktif: aktifMi(k), asama: (k.gorev && k.gorev.asama) || '' })),
     botAyar: T.botAyar, otoYeniden: T.otoYeniden, maxYeniden: T.maxYeniden, masaustu: app.getPath('desktop')
   }));
-  ipcMain.handle('takip:ekle', (e, o) => {
+  // Mükerrer kontrolü: aynı kalem adı engellenir, aynı jenerik adı (farklı kalem adıyla) uyarıyla sorulur
+  const katla = (v) => str(v).toLocaleLowerCase('tr-TR').replace(/ı/g, 'i').replace(/ş/g, 's').replace(/ç/g, 'c').replace(/ğ/g, 'g').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/\s+/g, ' ');
+  ipcMain.handle('takip:ekle', (e, o, zorla) => {
     o = o || {};
-    const k = Object.assign(yeniKalemTaslak(), { id: ++T.sonId, ad: str(o.ad), jenerik: str(o.jenerik) || str(o.tasinir), tasinir: str(o.jenerik) || str(o.tasinir), miktar: str(o.miktar) });
+    const ad = str(o.ad), jen = str(o.jenerik) || str(o.tasinir);
+    if (ad) {
+      const ayni = T.kalemler.find((k) => katla(k.ad) === katla(ad));
+      if (ayni) return { ok: false, tur: 'ad', id: ayni.id, ad: ayni.ad };
+    }
+    if (jen && !zorla) {
+      const ayni = T.kalemler.find((k) => katla(aranan(k)) === katla(jen));
+      if (ayni) return { ok: false, tur: 'jenerik', id: ayni.id, ad: ayni.ad };
+    }
+    const k = Object.assign(yeniKalemTaslak(), { id: ++T.sonId, ad, jenerik: jen, tasinir: jen, miktar: str(o.miktar) });
     T.kalemler.push(k);
     kaydetHemen();
-    return k.id;
+    return { ok: true, id: k.id };
   });
   ipcMain.handle('takip:guncelle', (e, id, alan, deger) => {
     const k = kalem(id);
