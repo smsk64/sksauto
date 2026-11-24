@@ -68,6 +68,17 @@
   .oz{background:#eef2ff!important;border-color:#c7d2fe!important;color:var(--acc)!important}
   tr.ayarsatir td{background:#fafbfc;padding:6px 10px}
   .bos{padding:26px;text-align:center;color:var(--mut)}
+  .toplu{display:flex;align-items:center;gap:8px;margin:0 0 6px;font-size:11.5px;color:var(--mut)}
+  .toplu .b{height:24px}
+  .b.sil{background:#fff;color:var(--red);border:1px solid #f3c4c6}.b.sil:hover{background:#fff1f1}
+  .b.sil:disabled{opacity:.45;cursor:default;background:#fff}
+  td.c input.sec{accent-color:var(--acc)}
+  .mdl{position:fixed;inset:0;background:rgba(15,17,21,.45);display:none;align-items:center;justify-content:center;z-index:50}
+  .mdl.ac{display:flex}
+  .mdl .kutu{background:#fff;border-radius:12px;padding:16px 18px;width:min(420px,90vw);box-shadow:0 12px 40px rgba(0,0,0,.3)}
+  .mdl .metin{white-space:pre-line;line-height:1.45;margin-bottom:14px;font-size:13px}
+  .mdl .dugme{display:flex;justify-content:flex-end;gap:8px}
+  .mdl .dugme .b{height:30px;padding:0 14px}
 </style>
 </head>
 <body>
@@ -107,14 +118,21 @@
 </div>
 
 <main>
+  <div class="toplu">
+    <span id="secSay">Seçili: 0</span>
+    <button class="b sil" id="secSil" disabled>Seçilileri sil</button>
+    <button class="b sil" id="hepsiSil">Tümünü sil</button>
+    <span style="color:#98a2b3">Satır başındaki kutularla kalem seçip topluca silebilirsin.</span>
+  </div>
   <table>
     <colgroup>
-      <col style="width:38px"><col style="width:38px"><col style="width:86px">
+      <col style="width:28px"><col style="width:38px"><col style="width:38px"><col style="width:86px">
       <col style="width:15%"><col style="width:24%">
       <col style="width:54px"><col style="width:46px"><col style="width:46px">
       <col style="width:92px"><col><col style="width:58px">
     </colgroup>
     <thead><tr>
+      <th class="c"><input type="checkbox" id="hepsiSec" title="Görünen tüm kalemleri seç / bırak" style="margin:0;accent-color:var(--acc)"></th>
       <th class="c" title="Stok koordinasyon taraması yapıldı">Tara</th><th class="c" title="Talepler yapıldı">Talep</th><th></th>
       <th>Kalem adı</th><th>Jenerik / Taşınır adı</th><th>Miktar</th>
       <th title="Bu kalem için min teklif (boş = varsayılan)">Min</th><th title="Bu kalem için max teklif (boş = varsayılan)">Max</th>
@@ -125,12 +143,42 @@
   <div class="bos" id="bos" style="display:none">Henüz kalem yok. Yukarıdan ekleyebilirsin.</div>
 </main>
 
+<div class="mdl" id="mdl"><div class="kutu"><div class="metin" id="mdlMetin"></div>
+  <div class="dugme"><button class="b l" id="mdlHayir">Vazgeç</button><button class="b p" id="mdlEvet">Evet</button></div></div></div>
+
 <script>
 const $ = (id) => document.getElementById(id);
+
+// Uygulama içi onay kutusu (yerel confirm() kullanılmaz: kapanınca sayfadaki giriş kutuları kilitleniyordu)
+let mdlSonuc = null, mdlOnceki = null;
+function onay(metin, evet, tehlike) {
+  return new Promise((coz) => {
+    mdlOnceki = document.activeElement;
+    $('mdlMetin').textContent = metin;
+    $('mdlEvet').textContent = evet || 'Evet';
+    $('mdlEvet').className = 'b ' + (tehlike ? 'r' : 'p');
+    $('mdl').classList.add('ac');
+    $('mdlEvet').focus();
+    mdlSonuc = (v) => {
+      $('mdl').classList.remove('ac');
+      mdlSonuc = null;
+      if (mdlOnceki && document.contains(mdlOnceki) && mdlOnceki.focus) { try { mdlOnceki.focus(); } catch (e) {} }
+      coz(v);
+    };
+  });
+}
+$('mdlEvet').onclick = () => mdlSonuc && mdlSonuc(true);
+$('mdlHayir').onclick = () => mdlSonuc && mdlSonuc(false);
+document.addEventListener('keydown', (e) => {
+  if (!mdlSonuc) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); mdlSonuc(false); }
+  else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); mdlSonuc(true); }
+}, true);
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 let S = null, imzaListe = '', acikAyar = {};
 const imzalar = {};
-const KOLON = 11;
+const KOLON = 12;
+const secili = new Set();
 
 function mesaj(m, t) { $('durum').textContent = m || ''; $('durum').className = t || ''; }
 
@@ -229,6 +277,7 @@ function aramaUygula() {
   $('bos').style.display = S.kalemler.length ? 'none' : 'block';
   if (S.kalemler.length && !gorunen) { $('bos').textContent = 'Aramaya uyan kalem yok.'; $('bos').style.display = 'block'; }
   else if (!S.kalemler.length) $('bos').textContent = 'Henüz kalem yok. Yukarıdan ekleyebilirsin.';
+  secGuncelle();
 }
 $('ara').oninput = aramaUygula;
 $('araTemiz').onclick = () => { $('ara').value = ''; aramaUygula(); $('ara').focus(); };
@@ -245,6 +294,7 @@ function ciz(zorla) {
     imzaListe = liste;
     $('govde').innerHTML = S.kalemler.map((k) => `
       <tr data-id="${k.id}">
+        <td class="c"><input type="checkbox" class="sec" data-sec="${k.id}" ${secili.has(k.id) ? 'checked' : ''} title="Seç"></td>
         <td class="c"><input type="checkbox" data-f="tarandi" ${k.tarandi ? 'checked' : ''}></td>
         <td class="c"><input type="checkbox" data-f="talepYapildi" ${k.talepYapildi ? 'checked' : ''}></td>
         <td class="act1"></td>
@@ -291,6 +341,41 @@ async function yukleVeri(zorla) {
   ciz(zorla);
 }
 
+// ---- seçim ve toplu silme ----
+function secGuncelle() {
+  const ids = new Set(S ? S.kalemler.map((k) => k.id) : []);
+  [...secili].forEach((i) => { if (!ids.has(i)) secili.delete(i); });
+  $('secSay').textContent = 'Seçili: ' + secili.size;
+  $('secSil').disabled = secili.size === 0;
+  $('secSil').textContent = secili.size ? 'Seçilileri sil (' + secili.size + ')' : 'Seçilileri sil';
+  const gorunen = [...document.querySelectorAll('tr[data-id]')].filter((t) => t.style.display !== 'none');
+  const say = gorunen.filter((t) => secili.has(Number(t.dataset.id))).length;
+  $('hepsiSec').checked = gorunen.length > 0 && say === gorunen.length;
+  $('hepsiSec').indeterminate = say > 0 && say < gorunen.length;
+}
+$('hepsiSec').onchange = () => {
+  const ac = $('hepsiSec').checked;
+  document.querySelectorAll('tr[data-id]').forEach((t) => {
+    if (t.style.display === 'none') return;
+    const id = Number(t.dataset.id);
+    if (ac) secili.add(id); else secili.delete(id);
+    const c = t.querySelector('input.sec'); if (c) c.checked = ac;
+  });
+  secGuncelle();
+};
+async function topluSil(idler, baslik) {
+  if (!idler.length) return;
+  const calisan = S.kalemler.filter((k) => idler.includes(k.id) && k.aktif).length;
+  const metin = baslik + (calisan ? '\n\nBunlardan ' + calisan + ' tanesi şu an çalışıyor, silinince botları da durdurulur.' : '') + '\n\nBu işlem geri alınamaz (Excel veya yedek almadıysan önce al).';
+  if (!(await onay(metin, 'Sil', true))) return;
+  const n = await api.al('takip:topluSil', idler);
+  idler.forEach((i) => secili.delete(i));
+  mesaj(n + ' kalem silindi.', 'ok');
+  yukleVeri(true);
+}
+$('secSil').onclick = () => topluSil([...secili], secili.size + ' seçili kalem silinsin mi?');
+$('hepsiSil').onclick = () => { if (S && S.kalemler.length) topluSil(S.kalemler.map((k) => k.id), 'Listedeki TÜM kalemler (' + S.kalemler.length + ' adet) silinsin mi?'); };
+
 // ---- olaylar ----
 $('govde').addEventListener('keydown', (e) => {
   if (e.target.tagName === 'TEXTAREA' && e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
@@ -300,6 +385,11 @@ $('govde').addEventListener('change', async (e) => {
   if (!tr) return;
   const id = Number(tr.dataset.id || tr.dataset.ayar);
   const k = S.kalemler.find((x) => x.id === id);
+  if (t.dataset.sec) {
+    if (t.checked) secili.add(id); else secili.delete(id);
+    secGuncelle();
+    return;
+  }
   if (t.dataset.f) {
     const deger = t.type === 'checkbox' ? t.checked : t.value;
     await api.al('takip:guncelle', id, t.dataset.f, deger);
@@ -324,7 +414,7 @@ $('govde').addEventListener('click', async (e) => {
   const k = S.kalemler.find((x) => x.id === id);
   const a = b.dataset.a;
   if (a === 'ara' || a === 'devam') {
-    if (a === 'ara' && (k.sayfa > 0 || k.teklif > 0) && !confirm('Bu kalemin mevcut ilerlemesi (' + k.sayfa + '/' + (k.toplamSayfa || '?') + '. sayfa, ' + k.teklif + ' teklif) sıfırlanıp baştan aranacak. Devam edilsin mi?\n\n(Kaldığı sayfadan devam etmek için ↪ düğmesini kullan.)')) return;
+    if (a === 'ara' && (k.sayfa > 0 || k.teklif > 0) && !(await onay('Bu kalemin mevcut ilerlemesi (' + k.sayfa + '/' + (k.toplamSayfa || '?') + '. sayfa, ' + k.teklif + ' teklif) sıfırlanıp baştan aranacak. Devam edilsin mi?\n\n(Kaldığı sayfadan devam etmek için ↪ düğmesini kullan.)', 'Baştan ara'))) return;
     mesaj('Sekme açılıyor...');
     const r = await api.al('takip:ara', id, a === 'devam');
     if (!r.ok) mesaj(r.hata, 'hata'); else mesaj('');
@@ -332,8 +422,8 @@ $('govde').addEventListener('click', async (e) => {
   } else if (a === 'durdur') {
     await api.al('takip:durdur', id); yukleVeri();
   } else if (a === 'sil') {
-    if (!confirm('"' + (k.ad || 'Kalem') + '" silinsin mi?')) return;
-    await api.al('takip:sil', id); yukleVeri(true);
+    if (!(await onay('"' + (k.ad || 'Kalem') + '" silinsin mi?', 'Sil', true))) return;
+    await api.al('takip:sil', id); secili.delete(id); yukleVeri(true);
   } else if (a === 'ayar') {
     acikAyar[id] = !acikAyar[id];
     ciz(true);
@@ -352,7 +442,7 @@ $('ekle').onclick = async () => {
   }
   if (!r.ok && r.tur === 'jenerik') {
     $('ara').value = jen; await yukleVeri(true);
-    if (!confirm('Aynı jenerik / taşınır adıyla kayıtlı bir kalem var: "' + r.ad + '".\n\nYine de yeni kalem olarak eklensin mi?')) {
+    if (!(await onay('Aynı jenerik / taşınır adıyla kayıtlı bir kalem var: "' + r.ad + '".\n\nYine de yeni kalem olarak eklensin mi?', 'Yine de ekle'))) {
       mesaj('Eklenmedi: aynı jenerik adı "' + r.ad + '" kaleminde mevcut.', 'hata');
       return;
     }
