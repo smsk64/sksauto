@@ -698,13 +698,28 @@ module.exports = function (ctx) {
     kaydet();
     return true;
   });
+  // Silinen kalemin çalışan botunu da durdurur
+  function botuDurdur(k) {
+    if (k.gorev) k.gorev.asama = 'durduruldu';
+    const v = k.sekmeId != null ? ctx.views[k.sekmeId] : null;
+    if (v) { try { v.webContents.executeJavaScript("(function(){var b=document.getElementById('oDur');if(b)b.click();})()").catch(() => {}); } catch (err) {} }
+  }
   ipcMain.handle('takip:sil', (e, id) => {
     const k = kalem(id);
     if (!k) return false;
-    if (k.gorev) k.gorev.asama = 'durduruldu';
+    botuDurdur(k);
     T.kalemler = T.kalemler.filter((x) => x.id !== id);
     kaydetHemen();
     return true;
+  });
+  // Toplu silme: seçili kalemler (ids) ya da tümü
+  ipcMain.handle('takip:topluSil', (e, ids) => {
+    const set = new Set((Array.isArray(ids) ? ids : []).map(Number));
+    let n = 0;
+    T.kalemler.forEach((k) => { if (set.has(k.id)) { botuDurdur(k); n++; } });
+    T.kalemler = T.kalemler.filter((k) => !set.has(k.id));
+    kaydetHemen();
+    return n;
   });
   ipcMain.handle('takip:ara', (e, id, devam) => ara(id, !!devam));
   ipcMain.handle('takip:durdur', async (e, id) => {
