@@ -340,8 +340,14 @@ module.exports = function (ctx) {
       if (o.hata) masaustuLog(tab, k, o);
       if (!k || !k.gorev) return;
       if (o.tamam) {
-        k.talepYapildi = true; k.gorev.asama = 'bitti';
-        durum(k, `Tamamlandı (${o.neden}) - ${k.teklif} teklif`);
+        k.gorev.asama = 'bitti';
+        if (o.tumSayfalar && (!k.toplamSayfa || k.sayfa >= k.toplamSayfa)) {
+          k.talepYapildi = true;
+          durum(k, `Tamamlandı (tüm sayfalar) - ${k.teklif} teklif`);
+        } else {
+          // Limit dolduğu için durdu: tüm sayfalar bitmedi, Talep ✓ konmaz; ↪ ile devam edilebilir
+          durum(k, `Durdu: ${o.neden} (${k.sayfa}/${k.toplamSayfa || '?'}. sayfa)`);
+        }
       } else if (o.kullanici) {
         k.gorev.asama = 'durduruldu';
         durum(k, `Durduruldu (${k.sayfa}/${k.toplamSayfa || '?'}. sayfada)`);
@@ -544,7 +550,7 @@ module.exports = function (ctx) {
     if (sec.response === 2) return { ok: false, iptal: true };
     let eklenen = 0, guncellenen = 0;
     if (sec.response === 1) {
-      T.kalemler.forEach((k) => { if (k.gorev) k.gorev.asama = 'durduruldu'; });
+      T.kalemler.forEach((k) => { botuDurdur(k); sekmeyiKapat(k); });
       T.kalemler = [];
     }
     yeniler.forEach((o) => {
@@ -647,7 +653,7 @@ module.exports = function (ctx) {
   ipcMain.on('takip', pencereAc);
 
   ipcMain.handle('takip:oku', () => ({
-    kalemler: T.kalemler.map((k) => Object.assign({}, k, { gorev: null, aktif: aktifMi(k), asama: (k.gorev && k.gorev.asama) || '' })),
+    kalemler: T.kalemler.map((k) => Object.assign({}, k, { gorev: null, aktif: aktifMi(k), asama: (k.gorev && k.gorev.asama) || '', sekmeAcik: k.sekmeId != null && !!ctx.views[k.sekmeId] })),
     botAyar: T.botAyar, otoYeniden: T.otoYeniden, maxYeniden: T.maxYeniden, masaustu: app.getPath('desktop')
   }));
   // Mükerrer kontrolü: aynı kalem adı engellenir, aynı jenerik adı (farklı kalem adıyla) uyarıyla sorulur
@@ -704,10 +710,27 @@ module.exports = function (ctx) {
     const v = k.sekmeId != null ? ctx.views[k.sekmeId] : null;
     if (v) { try { v.webContents.executeJavaScript("(function(){var b=document.getElementById('oDur');if(b)b.click();})()").catch(() => {}); } catch (err) {} }
   }
+  // Kalemin botunun açtığı sekmeyi kapatır (kalem ve ilerleme listede kalır)
+  function sekmeyiKapat(k) {
+    if (k.sekmeId == null) return false;
+    botuDurdur(k);
+    try { ctx.sekmeKapat(k.sekmeId); } catch (err) {}
+    k.sekmeId = null; k.gorev = null;
+    return true;
+  }
+  ipcMain.handle('takip:sekmeKapat', (e, id) => {
+    const k = kalem(id);
+    if (!k) return false;
+    if (!sekmeyiKapat(k)) return false;
+    durum(k, k.sayfa > 1 ? `Sekme kapatıldı (${k.sayfa}/${k.toplamSayfa || '?'}. sayfada kalındı)` : 'Sekme kapatıldı');
+    kaydetHemen();
+    return true;
+  });
   ipcMain.handle('takip:sil', (e, id) => {
     const k = kalem(id);
     if (!k) return false;
     botuDurdur(k);
+    sekmeyiKapat(k);
     T.kalemler = T.kalemler.filter((x) => x.id !== id);
     kaydetHemen();
     return true;
@@ -716,7 +739,7 @@ module.exports = function (ctx) {
   ipcMain.handle('takip:topluSil', (e, ids) => {
     const set = new Set((Array.isArray(ids) ? ids : []).map(Number));
     let n = 0;
-    T.kalemler.forEach((k) => { if (set.has(k.id)) { botuDurdur(k); n++; } });
+    T.kalemler.forEach((k) => { if (set.has(k.id)) { botuDurdur(k); sekmeyiKapat(k); n++; } });
     T.kalemler = T.kalemler.filter((k) => !set.has(k.id));
     kaydetHemen();
     return n;
