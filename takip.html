@@ -41,11 +41,11 @@
   main{flex:1;overflow:auto;padding:0 12px 12px}
   table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
   th{background:#fafbfc;text-align:left;font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:var(--mut);padding:6px 5px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;position:sticky;top:0;z-index:1}
-  th.c{text-align:center}
+  th.c{text-align:center;padding-left:2px;padding-right:2px;font-size:9px}
   td{padding:3px 5px;border-bottom:1px solid #f0f2f5;vertical-align:middle;overflow:hidden}
   tr:last-child td{border-bottom:0}
-  td.c{text-align:center}
-  td.c input{width:15px;height:15px;accent-color:var(--grn);cursor:pointer;margin:0}
+  td.c{text-align:center;padding-left:2px;padding-right:2px}
+  td.c input{width:14px;height:14px;accent-color:var(--grn);cursor:pointer;margin:0}
   .g{width:100%;border:1px solid transparent;background:transparent;border-radius:5px;font:inherit;color:var(--ink);padding:2px 5px}
   textarea.g{height:33px;font-size:11.5px;line-height:1.25;resize:none;overflow:hidden;display:block}
   input.g{height:26px;font-size:12px}
@@ -65,6 +65,7 @@
   .ikon{width:24px;padding:0}
   .act1 .mini+.mini{margin-left:3px}
   .act2 .mini+.mini{margin-left:3px}
+  .b.dev{background:#f59e0b;color:#fff;font-weight:600;border:0}.b.dev:hover{background:#d97706}
   .oz{background:#eef2ff!important;border-color:#c7d2fe!important;color:var(--acc)!important}
   tr.ayarsatir td{background:#fafbfc;padding:6px 10px}
   .bos{padding:26px;text-align:center;color:var(--mut)}
@@ -126,10 +127,10 @@
   </div>
   <table>
     <colgroup>
-      <col style="width:28px"><col style="width:38px"><col style="width:38px"><col style="width:86px">
+      <col style="width:24px"><col style="width:30px"><col style="width:30px"><col style="width:100px">
       <col style="width:15%"><col style="width:24%">
       <col style="width:54px"><col style="width:46px"><col style="width:46px">
-      <col style="width:92px"><col><col style="width:58px">
+      <col style="width:92px"><col><col style="width:86px">
     </colgroup>
     <thead><tr>
       <th class="c"><input type="checkbox" id="hepsiSec" title="Görünen tüm kalemleri seç / bırak" style="margin:0;accent-color:var(--acc)"></th>
@@ -233,14 +234,17 @@ function ilerleme(k) {
 }
 function butonlar1(k) {
   if (k.aktif) return `<button class="b r mini" data-a="durdur" title="Çalışan aramayı durdur">Durdur</button>`;
-  let h = `<button class="b p mini" data-a="ara" title="${esc((k.ad || 'Kalem') + ' için aramayı başlat')}">Ara</button>`;
-  if (k.sayfa > 1 && !k.talepYapildi) h += `<button class="b l mini" data-a="devam" title="Kaldığı sayfadan devam et (${k.sayfa}. sayfa)">↪${k.sayfa}</button>`;
+  let h = `<button class="b p mini" data-a="ara" title="${esc((k.ad || 'Kalem') + ' için aramayı BAŞTAN başlat')}">Ara</button>`;
+  // Yarıda kaldıysa (1. sayfadan sonra) her zaman görünür: kaldığı sayfadan devam eder
+  const bitti = k.talepYapildi && k.toplamSayfa && k.sayfa >= k.toplamSayfa;
+  if (k.sayfa > 1 && !bitti) h += `<button class="b dev mini" data-a="devam" title="${k.sayfa}. sayfadan devam ederek ara (Ara düğmesi baştan başlatır)">↪${k.sayfa}</button>`;
   return h;
 }
 function butonlar2(k) {
   const ekstra = ['yuzde', 'adim', 'gun', 'maxTeklif', 'maxSayfa', 'hastaneTek'].some((n) => (k.ayar || {})[n] !== undefined);
   return `<button class="b l mini ikon${ekstra ? ' oz' : ''}" data-a="ayar" title="Bu kaleme özel diğer bot ayarları (yüzde, miad, yuvarlama, toplam teklif, sayfa sınırı, aynı hastane)">⚙</button>` +
-    `<button class="b l mini ikon" data-a="sil" title="Kalemi sil">✕</button>`;
+    (k.sekmeAcik ? `<button class="b l mini ikon" data-a="sekme" title="Bu kalemin sekmesini kapat (kalem ve ilerleme listede kalır)">⊗</button>` : '') +
+    `<button class="b l mini ikon" data-a="sil" title="Kalemi sil (açık sekmesi de kapanır)">✕</button>`;
 }
 function ayarSatiri(k) {
   const a = k.ayar || {};
@@ -309,7 +313,7 @@ function ciz(zorla) {
   S.kalemler.forEach((k) => {
     const tr = document.querySelector(`tr[data-id="${k.id}"]`);
     if (!tr) return;
-    const imza = [k.aktif, k.sayfa, k.toplamSayfa, k.teklif, k.sonTeklifSayfa, k.durum, k.talepYapildi, k.tarandi, k.ad, JSON.stringify(k.ayar || {})].join('|');
+    const imza = [k.aktif, k.sayfa, k.toplamSayfa, k.teklif, k.sonTeklifSayfa, k.durum, k.talepYapildi, k.tarandi, k.ad, JSON.stringify(k.ayar || {}), k.sekmeAcik].join('|');
     if (imzalar[k.id] === imza) return;
     imzalar[k.id] = imza;
     tr.querySelector('.ilr').innerHTML = ilerleme(k);
@@ -366,7 +370,8 @@ $('hepsiSec').onchange = () => {
 async function topluSil(idler, baslik) {
   if (!idler.length) return;
   const calisan = S.kalemler.filter((k) => idler.includes(k.id) && k.aktif).length;
-  const metin = baslik + (calisan ? '\n\nBunlardan ' + calisan + ' tanesi şu an çalışıyor, silinince botları da durdurulur.' : '') + '\n\nBu işlem geri alınamaz (Excel veya yedek almadıysan önce al).';
+  const sekmeSay = S.kalemler.filter((k) => idler.includes(k.id) && k.sekmeAcik).length;
+  const metin = baslik + (sekmeSay ? '\n\nBunlardan ' + sekmeSay + ' tanesinin açık sekmesi de kapatılacak.' : '') + (calisan ? '\n\nBunlardan ' + calisan + ' tanesi şu an çalışıyor, silinince botları da durdurulur.' : '') + '\n\nBu işlem geri alınamaz (Excel veya yedek almadıysan önce al).';
   if (!(await onay(metin, 'Sil', true))) return;
   const n = await api.al('takip:topluSil', idler);
   idler.forEach((i) => secili.delete(i));
@@ -421,8 +426,13 @@ $('govde').addEventListener('click', async (e) => {
     yukleVeri();
   } else if (a === 'durdur') {
     await api.al('takip:durdur', id); yukleVeri();
+  } else if (a === 'sekme') {
+    if (k.aktif && !(await onay('"' + (k.ad || 'Kalem') + '" için çalışan arama durdurulup sekme kapatılacak. Kalem ve ilerleme (' + k.sayfa + '/' + (k.toplamSayfa || '?') + '. sayfa) listede kalır, ↪ ile devam edebilirsin.', 'Sekmeyi kapat', true))) return;
+    await api.al('takip:sekmeKapat', id);
+    mesaj('Sekme kapatıldı.', 'ok');
+    yukleVeri(true);
   } else if (a === 'sil') {
-    if (!(await onay('"' + (k.ad || 'Kalem') + '" silinsin mi?', 'Sil', true))) return;
+    if (!(await onay('"' + (k.ad || 'Kalem') + '" silinsin mi?' + (k.sekmeAcik ? '\n\nBu kalemin açık sekmesi de kapatılacak.' : ''), 'Sil', true))) return;
     await api.al('takip:sil', id); secili.delete(id); yukleVeri(true);
   } else if (a === 'ayar') {
     acikAyar[id] = !acikAyar[id];
