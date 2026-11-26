@@ -683,13 +683,20 @@ ipcMain.on('ekle', () => {
   viewOlustur(tab);
   cfg.active = id; cfgKaydet(); layout(); push();
 });
-ipcMain.on('kapat', (e, id) => {
-  try { takip.sekmeKapandi(id); } catch (err) {}
+function sekmeKapat(id) {
   const v = views[id];
-  if (v) { win.contentView.removeChildView(v); v.webContents.close(); delete views[id]; }
+  if (v) {
+    try { win.contentView.removeChildView(v); } catch (err) {}
+    try { v.webContents.close(); } catch (err) {}
+    delete views[id];
+  }
   cfg.tabs = cfg.tabs.filter((t) => t.id !== id);
   if (cfg.active === id) cfg.active = cfg.tabs[0] ? cfg.tabs[0].id : 0;
   cfgKaydet(); layout(); push();
+}
+ipcMain.on('kapat', (e, id) => {
+  try { takip.sekmeKapandi(id); } catch (err) {}
+  sekmeKapat(id);
 });
 ipcMain.on('ad', (e, id, ad) => {
   const t = tabBul(id); if (t) { t.name = ad; cfgKaydet(); push(); }
@@ -841,7 +848,7 @@ ipcMain.on('bul-kapat', (e, id) => {
 takip = require('./takip.js')({
   app, dialog, BrowserWindow, ipcMain, shell, fs, path, BASE,
   getWin: () => win, getCfg: () => cfg, views,
-  tabBul, viewOlustur, viewKaldir, layout, push, cfgKaydet, cfgDegistir,
+  tabBul, viewOlustur, viewKaldir, sekmeKapat, layout, push, cfgKaydet, cfgDegistir,
   dlog, kisalt, sifrele, coz, scriptOku, dosyaYolu, scriptEnjekte, loginDene,
   rapor: () => rapor(), xlsxOlustur: require('./xlsx.js').xlsxOlustur, xlsxOku: require('./xlsx.js').xlsxOku
 });
