@@ -499,8 +499,13 @@
 
     // ---------- Sonraki sayfa: 'ok' | 'son' | 'yok' | 'zaman' ----------
     async function sonrakiSayfa() {
-        const pb = sayfaBilgi();
-        if (!pb.cur) return 'yok';
+        let pb = sayfaBilgi();
+        if (!pb.cur) {
+            // Grid yenileniyor / hata sonrası toparlanıyor olabilir: sayfa numaralarının gelmesini bekle
+            await bekleVeBul(() => sayfaBilgi().cur, 30000);
+            pb = sayfaBilgi();
+            if (!pb.cur) return 'yok';
+        }
         if (pb.toplam && pb.cur >= pb.toplam) return 'son';
 
         const onceki = pb.cur;
@@ -519,10 +524,12 @@
                 sonuc = 'ok'; // yavaş gelen önceki cevap sayfayı zaten değiştirmiş
             } else {
                 const sonraki = document.querySelector(SEL_PAGER + ' a[id$="DXPagerBottom_PBN"]');
-                if (!sonraki) return 'yok';
+                // Son sayfa değilse buton görünmese bile sayfa komutuyla (PN) ilerlemeyi dene
+                if (!sonraki && !(pb.toplam && pb.cur < pb.toplam)) return 'yok';
                 const uyari0 = window.__otoAlertSayac || 0;
                 if (deneme > 1) logYaz('SAYFA', `geçiş tekrar deneniyor (${deneme}/${A.deneme})`);
-                sonraki.click();
+                if (sonraki) sonraki.click();
+                else if (!pagerKomut(onceki + 1)) return 'yok';
                 sonuc = await gecisBekle(degisti, bas, uyari0, `Sayfa geçişi (deneme ${deneme}/${A.deneme})`);
             }
 
@@ -741,7 +748,17 @@
                 const g = await sonrakiSayfa();
                 if (durduruldu) break;
                 if (g === 'son') { bitisMesaji = 'Son sayfaya gelindi.'; break; }
-                if (g === 'yok') { bitisMesaji = 'Sonraki sayfa butonu bulunamadı.'; break; }
+                if (g === 'yok') {
+                    const tp = D.toplamSayfa || sayfaBilgi().toplam || 0;
+                    if (tp > 1 && (D.sayfa || 0) < tp) {
+                        // Bitmedi: sayfa numaraları / sonraki buton kayboldu. Bitti sayma, toparlan (sayfayı yenile, bu sayfaya dön)
+                        logYaz('HATA', `sonraki sayfa butonu bulunamadı (${D.sayfa}/${tp}. sayfa), toparlanılıyor`);
+                        await kurtarDene(`sonraki sayfa butonu bulunamadı (${D.sayfa}/${tp}. sayfa)`);
+                        break;
+                    }
+                    bitisMesaji = 'Son sayfaya gelindi.';   // tek sayfalık sonuç
+                    break;
+                }
                 if (g === 'zaman') { await kurtarDene(`sayfa geçişi ${A.deneme} denemede olmadı`); break; }
                 D.sayfaSayac++;
                 durumKaydet();
@@ -765,11 +782,11 @@
 
         // Takip ekranına / masaüstü hata loguna bildir
         const TAMAM = ['Teklif limiti doldu.', 'Sayfa limiti doldu.', 'Son sayfaya gelindi.'];
-        const tamam = TAMAM.includes(bitisMesaji) || (bitisMesaji === 'Sonraki sayfa butonu bulunamadı.' && !(sayfaBilgi().toplam > 1));
+        const tamam = TAMAM.includes(bitisMesaji);
         const kullanici = bitisMesaji === 'Durduruldu.';
         const hata = !tamam && !kullanici;
         if (hata) sonDurumLog();
-        hataBildir('bitti', bitisMesaji, { tamam, kullanici, hata });
+        hataBildir('bitti', bitisMesaji, { tamam, kullanici, hata, tumSayfalar: bitisMesaji === 'Son sayfaya gelindi.' });
     }
 
     // ---------- Arayüz ----------
